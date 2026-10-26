@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
 
 from mediashrink.importing import MEDIA_EXTENSIONS, ScanReport, destination_conflict, scan_media
 from mediashrink.queue_model import QueueModel, format_size
+from mediashrink.video import compress, Cancelled
+from mediashrink.importing import VIDEO_EXTENSIONS
 
 
 class ImportThread(QThread):
@@ -35,6 +37,33 @@ class ImportThread(QThread):
             report = ScanReport()
             report.error(f"Import failed: {exc}")
         self.report_ready.emit(report)
+
+
+class VideoThread(QThread):
+    update = Signal(int, str, str)
+
+    def __init__(self, files, destination, roots, parent=None):
+        super().__init__(parent)
+        self.files, self.destination, self.roots = files, destination, roots
+        self.cancel = Event()
+
+    def run(self):
+        for row, item in enumerate(self.files):
+            if self.cancel.is_set():
+                break
+            if item.path.suffix.lower() not in VIDEO_EXTENSIONS:
+                self.update.emit(row, "Photo support coming later", "—")
+                continue
+            try:
+                self.update.emit(row, "Checking video", "—")
+                target, size = compress(item.path, self.destination, self.roots, self.cancel,
+                    lambda percent, row=row: self.update.emit(row, f"Compressing {percent}%", "—"))
+                self.update.emit(row, f"Saved: {target}" if target else "Skipped: no size reduction", format_size(size) if target else "—")
+            except Cancelled:
+                self.update.emit(row, "Cancelled", "—")
+                break
+            except Exception as exc:
+                self.update.emit(row, str(exc), "—")
 
 
 class MainWindow(QMainWindow):
@@ -63,7 +92,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(subtitle)
         notice = QLabel(
             "Development preview: add files or folders to prepare your queue. "
-            "Compression is coming in the next milestones."
+            "CPU video compression is available; photo compression is coming later."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
@@ -115,6 +144,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.details)
         self.start_button = QPushButton("Compression coming soon")
         self.start_button.setEnabled(False)
+        self.start_button.clicked.connect(self.start_compression)
         layout.addWidget(self.start_button)
         safety = QLabel("Import only reads file information. Originals are never changed.")
         safety.setWordWrap(True)
@@ -156,12 +186,15 @@ class MainWindow(QMainWindow):
         for button in (self.add_files_button, self.add_folder_button, self.clear_button, self.destination_button):
             button.setEnabled(not busy)
         self.cancel_button.setEnabled(busy)
+        if not busy:
+            self.cancel_button.setText("Cancel import")
         self.progress.setVisible(busy)
 
     @Slot(object)
     def add_batch(self, files):
         self.queue.append(files)
         self.summary.setText(f"{self.queue.rowCount():,} files · {format_size(self.queue.total_bytes)} original")
+        self.refresh_start()
 
     @Slot(object)
     def show_report(self, report: ScanReport):
@@ -184,6 +217,7 @@ class MainWindow(QMainWindow):
         worker = self.worker
         self.worker = None
         self.set_importing(False)
+        self.refresh_start()
         if worker is not None:
             worker.deleteLater()
         if self.close_pending:
@@ -201,6 +235,7 @@ class MainWindow(QMainWindow):
         if self.worker is not None:
             return
         self.queue.clear()
+        self.refresh_start()
         self.source_folders.clear()
         self.summary.setText("No files added yet")
         self.details.clear()
@@ -221,6 +256,7 @@ class MainWindow(QMainWindow):
             return False
         self.destination = destination
         self.destination_label.setText(str(destination))
+        self.refresh_start()
         self.details.clear()
         return True
 
@@ -229,6 +265,28 @@ class MainWindow(QMainWindow):
         path = QFileDialog.getExistingDirectory(self, "Choose separate output folder")
         if path and not self.set_destination(Path(path)):
             QMessageBox.warning(self, "Output folder unavailable", self.details.text())
+
+    def refresh_start(self):
+        self.start_button.setText("Compress videos (CPU)")
+        self.start_button.setEnabled(self.worker is None and self.destination is not None and bool(self.queue.files))
+
+    @Slot()
+    def start_compression(self):
+        if self.worker is not None or self.destination is None:
+            return
+        self.worker = VideoThread(list(self.queue.files), self.destination, set(self.source_folders), self)
+        self.worker.update.connect(self.video_update)
+        self.worker.finished.connect(self.import_finished)
+        self.set_importing(True)
+        self.start_button.setEnabled(False)
+        self.cancel_button.setText("Cancel processing")
+        self.worker.start()
+
+    @Slot(int, str, str)
+    def video_update(self, row, status, size):
+        self.queue.results[row] = (status, size)
+        self.queue.dataChanged.emit(self.queue.index(row, 0), self.queue.index(row, 3))
+        self.statusBar().showMessage(f"File {row + 1}/{self.queue.rowCount()}: {status}")
 
     def closeEvent(self, event):
         if self.worker is not None:
