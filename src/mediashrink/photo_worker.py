@@ -25,7 +25,10 @@ def encode(source, output):
             raise ValueError('Skipped: JPEG output cannot preserve transparency')
         image.jpegsave(output, Q=85, optimize_coding=True)
     else:
-        image.webpsave(output, Q=85, lossless=True, exact=True)
+        options = {'Q': 85, 'lossless': True}
+        if 'exact' in pyvips.Introspect.get('webpsave').optional_input:
+            options['exact'] = True
+        image.webpsave(output, **options)
     result = pyvips.Image.new_from_file(output, fail_on='warning')
     result.avg()  # Force full decoding before the parent can publish anything.
     if (image.width, image.height, image.bands) != (result.width, result.height, result.bands):
