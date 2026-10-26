@@ -2,7 +2,7 @@
 
 An offline Linux desktop app for batch photo and video compression, targeting Omarchy (Arch Linux) and optional NVIDIA acceleration.
 
-**Current status: import queue preview.** Add files or recursively scan folders, see original sizes, cancel import, clear the queue, and choose a separate output folder. Compression is not implemented yet. Import reads file information without opening media contents or modifying originals.
+**Current status: import queue preview.** Add files or recursively scan folders, see original sizes, cancel import, clear the queue, and choose a separate output folder. CPU video compression is available through **Compress videos (CPU)**. Install FFmpeg (`sudo pacman -Syu --needed ffmpeg`). Outputs are H.264/AAC MP4 using CRF 23; photo encoding and GPU acceleration come later. HDR, rotation metadata and extra streams are explicitly skipped. Outputs are fully decoded for validation and only kept if smaller. Existing outputs get a numbered filename; originals are retained. Import reads file information without opening media contents or modifying originals.
 
 ## Prepare a batch
 
@@ -59,4 +59,4 @@ The wheel and source archive are Python packages, not self-contained Linux appli
 - Progress, output validation, and measured savings.
 - Separate output destination; originals are never automatically overwritten or deleted.
 
-FFmpeg/libvips are not needed for the import queue. NVIDIA functionality must eventually be tested with a real encode on the target laptop. See [the roadmap](docs/ROADMAP.md) and [handover](HANDOVER.md) for the next steps.
+FFmpeg and FFprobe are required for video compression; importing alone does not require them. NVIDIA functionality must eventually be tested with a real encode on the target laptop. See [the roadmap](docs/ROADMAP.md) and [handover](HANDOVER.md) for the next steps.

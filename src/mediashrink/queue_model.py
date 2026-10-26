@@ -21,6 +21,7 @@ class QueueModel(QAbstractTableModel):
         super().__init__(parent)
         self.files: list[MediaFile] = []
         self.total_bytes = 0
+        self.results = {}
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self.files)
@@ -38,9 +39,10 @@ class QueueModel(QAbstractTableModel):
             return None
         item = self.files[index.row()]
         if role == Qt.ItemDataRole.ToolTipRole:
-            return str(item.path)
+            return self.results.get(index.row(), (str(item.path), ""))[0]
         if role == Qt.ItemDataRole.DisplayRole:
-            return (str(item.path), format_size(item.size), "—", "Imported")[index.column()]
+            status, size = self.results.get(index.row(), ("Imported", "—"))
+            return (str(item.path), format_size(item.size), size, status)[index.column()]
         return None
 
     def append(self, files: list[MediaFile]) -> None:
@@ -56,4 +58,5 @@ class QueueModel(QAbstractTableModel):
         self.beginResetModel()
         self.files.clear()
         self.total_bytes = 0
+        self.results = {}
         self.endResetModel()
