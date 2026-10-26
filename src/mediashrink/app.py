@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from mediashrink.importing import MEDIA_EXTENSIONS, ScanReport, destination_conflict, scan_media
 from mediashrink.queue_model import QueueModel, format_size
 from mediashrink.video import compress, Cancelled
+from mediashrink.photo import compress as compress_photo
 from mediashrink.importing import VIDEO_EXTENSIONS
 
 
@@ -39,7 +40,7 @@ class ImportThread(QThread):
         self.report_ready.emit(report)
 
 
-class VideoThread(QThread):
+class MediaThread(QThread):
     update = Signal(int, str, str)
 
     def __init__(self, files, destination, roots, parent=None):
@@ -51,12 +52,10 @@ class VideoThread(QThread):
         for row, item in enumerate(self.files):
             if self.cancel.is_set():
                 break
-            if item.path.suffix.lower() not in VIDEO_EXTENSIONS:
-                self.update.emit(row, "Photo support coming later", "—")
-                continue
+            engine = compress if item.path.suffix.lower() in VIDEO_EXTENSIONS else compress_photo
             try:
-                self.update.emit(row, "Checking video", "—")
-                target, size = compress(item.path, self.destination, self.roots, self.cancel,
+                self.update.emit(row, "Checking media", "—")
+                target, size = engine(item.path, self.destination, self.roots, self.cancel,
                     lambda percent, row=row: self.update.emit(row, f"Compressing {percent}%", "—"))
                 self.update.emit(row, f"Saved: {target}" if target else "Skipped: no size reduction", format_size(size) if target else "—")
             except Cancelled:
@@ -72,7 +71,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("MediaShrink")
         self.resize(1000, 680)
         self.setMinimumSize(640, 500)
-        self.worker: ImportThread | None = None
+        self.worker: ImportThread | MediaThread | None = None
         self.destination: Path | None = None
         self.source_folders: set[Path] = set()
         self.close_pending = False
@@ -92,7 +91,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(subtitle)
         notice = QLabel(
             "Development preview: add files or folders to prepare your queue. "
-            "CPU video compression is available; photo compression is coming later."
+            "Compress photos and videos to a separate output folder."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
@@ -142,7 +141,7 @@ class MainWindow(QMainWindow):
         self.details.setWordWrap(True)
         self.details.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.details)
-        self.start_button = QPushButton("Compression coming soon")
+        self.start_button = QPushButton("Compress photos and videos (CPU)")
         self.start_button.setEnabled(False)
         self.start_button.clicked.connect(self.start_compression)
         layout.addWidget(self.start_button)
@@ -150,7 +149,7 @@ class MainWindow(QMainWindow):
         safety.setWordWrap(True)
         layout.addWidget(safety)
         self.setCentralWidget(content)
-        self.statusBar().showMessage("Ready to import · Compression unavailable")
+        self.statusBar().showMessage("Ready to import")
 
     @Slot()
     def choose_files(self):
@@ -228,7 +227,7 @@ class MainWindow(QMainWindow):
         if self.worker is not None:
             self.worker.cancel.set()
             self.cancel_button.setEnabled(False)
-            self.statusBar().showMessage("Cancelling import…")
+            self.statusBar().showMessage("Cancelling…")
 
     @Slot()
     def clear_queue(self):
@@ -267,14 +266,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Output folder unavailable", self.details.text())
 
     def refresh_start(self):
-        self.start_button.setText("Compress videos (CPU)")
+        self.start_button.setText("Compress photos and videos (CPU)")
         self.start_button.setEnabled(self.worker is None and self.destination is not None and bool(self.queue.files))
 
     @Slot()
     def start_compression(self):
         if self.worker is not None or self.destination is None:
             return
-        self.worker = VideoThread(list(self.queue.files), self.destination, set(self.source_folders), self)
+        self.worker = MediaThread(list(self.queue.files), self.destination, set(self.source_folders), self)
         self.worker.update.connect(self.video_update)
         self.worker.finished.connect(self.import_finished)
         self.set_importing(True)

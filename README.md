@@ -2,7 +2,7 @@
 
 An offline Linux desktop app for batch photo and video compression, targeting Omarchy (Arch Linux) and optional NVIDIA acceleration.
 
-**Current status: import queue preview.** Add files or recursively scan folders, see original sizes, cancel import, clear the queue, and choose a separate output folder. CPU video compression is available through **Compress videos (CPU)**. Install FFmpeg (`sudo pacman -Syu --needed ffmpeg`). Outputs are H.264/AAC MP4 using CRF 23; photo encoding and GPU acceleration come later. HDR, rotation metadata and extra streams are explicitly skipped. Outputs are fully decoded for validation and only kept if smaller. Existing outputs get a numbered filename; originals are retained. Import reads file information without opening media contents or modifying originals.
+**Current status: CPU photo and video compression.** Add files or recursively scan folders, see original sizes, cancel import, clear the queue, and choose a separate output folder. CPU video compression is available through **Compress photos and videos (CPU)**. Install FFmpeg (`sudo pacman -Syu --needed ffmpeg`). Outputs are H.264/AAC MP4 using CRF 23; GPU acceleration comes later. HDR, rotation metadata and extra streams are explicitly skipped. Outputs are fully decoded for validation and only kept if smaller. Existing outputs get a numbered filename; originals are retained. Import reads file information without opening media contents or modifying originals.
 
 ## Prepare a batch
 
@@ -12,14 +12,14 @@ An offline Linux desktop app for batch photo and video compression, targeting Om
 
 Import skips symlink files/folders, unsupported extensions, and duplicate absolute paths. It reports inaccessible or missing paths and continues. This is path deduplication, not content duplicate detection. The queue exists only for the current session.
 
-**Cancel import** keeps files already discovered; **Clear queue** removes the queue and imported-folder restrictions. Scanning happens in a background thread. Closing requests cancellation and waits for the scan to stop; an in-progress filesystem operation on a stalled mount may delay cancellation. No output folders or files are created, and destination writability is not yet tested.
+**Cancel import** keeps files already discovered; **Clear queue** removes the queue and imported-folder restrictions. Scanning happens in a background thread. Closing requests cancellation and waits for the scan to stop; an in-progress filesystem operation on a stalled mount may delay cancellation. Import creates no output files. Compression uses a private temporary directory in the chosen output folder.
 
 ## Run on Omarchy / Arch
 
 Use the distribution's Qt bindings, avoiding a separate Qt installation:
 
 ```bash
-sudo pacman -Syu --needed python python-pip pyside6 git
+sudo pacman -Syu --needed python python-pip pyside6 git libvips python-pyvips ffmpeg
 git clone https://github.com/qualified-opinion/MediaShrink.git
 cd MediaShrink
 python -m venv --system-site-packages .venv
@@ -35,7 +35,7 @@ For a conventional isolated development environment (Python 3.11+):
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e . build
+python -m pip install -e '.[photos]' build
 mediashrink
 ```
 
@@ -60,3 +60,11 @@ The wheel and source archive are Python packages, not self-contained Linux appli
 - Separate output destination; originals are never automatically overwritten or deleted.
 
 FFmpeg and FFprobe are required for video compression; importing alone does not require them. NVIDIA functionality must eventually be tested with a real encode on the target laptop. See [the roadmap](docs/ROADMAP.md) and [handover](HANDOVER.md) for the next steps.
+
+## Photo compression
+
+Install libvips and pyvips (included in the Arch command above); in an isolated environment use `python -m pip install '.[photos]'` plus your distribution's libvips runtime. Missing loaders or encoders are reported per file; HEIC support depends on the installed libheif/libvips build. Video compression remains usable without pyvips.
+
+JPEG and supported HEIC inputs produce JPEG at quality 85. PNG and WebP produce lossless WebP with exact alpha pixels; dimensions are retained. EXIF orientation is applied to pixels and normalised. Supported EXIF/XMP/ICC metadata is retained by libvips, including location information when present; original modification time is retained. This is not a metadata scrubber. Validation checks full decoding, dimensions/channels, orientation, ICC/XMP and the original capture-date field when present; lossless WebP also gets a pixel comparison. It does not guarantee preservation of every vendor metadata tag.
+
+Animated/multi-image inputs, unsupported colour spaces, high-bit-depth/HDR images and photos over 100 megapixels are skipped. Larger results are discarded. Photos use stage progress (0%, validation, complete), with cancellation terminating the isolated worker. Existing output names receive numeric suffixes. As with video, publication currently requires a filesystem with hard-link support. Test representative phone photos before using a large batch.
