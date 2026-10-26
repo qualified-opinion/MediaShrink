@@ -3,6 +3,8 @@
 Target: Omarchy / Arch Linux, including an RTX 3050 laptop. All processing offline.
 Each milestone is a separate branch and PR; GitHub assigns actual PR numbers.
 
+Progress: milestone 1 merged; milestone 2 implemented in the batch-selection PR. Milestones 3–6 remain.
+
 1. **Project shell** — Python package, native PySide6 window, headless startup CI, documentation.
 2. **Batch selection** — file/folder import, recursive scan outside the UI thread, supported-format filtering, duplicate path prevention, destination selection. Never write media during import.
 3. **Video engine** — FFprobe analysis and CPU FFmpeg encoding for MP4/MOV/MKV; background jobs, progress and cancellation. Write temporary output only in the destination; validate before publishing. Keep originals and discard larger results. Explicitly skip unsupported HDR/streams until handled safely.
