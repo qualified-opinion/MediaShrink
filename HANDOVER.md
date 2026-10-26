@@ -25,6 +25,8 @@ Final round of review improvements:
 
 Dependency note: PySide6 6.12.0 loses a reference to `True` on every signal emit; on Python 3.11 this crashes the app (and CI) after a few thousand emits. pyproject excludes 6.12.0 on Python < 3.12 only; revisit when a fixed release appears.
 
+Packaging: `packaging/arch/PKGBUILD` (makepkg -sif) installs MediaShrink as a native Arch package with a desktop launcher (`packaging/mediashrink.desktop`) and icon (`packaging/mediashrink.svg`). `check()` runs the test suite against the system libraries. The `arch-package` CI job builds, installs and smoke-tests it in an `archlinux` container; this session's network policy blocks Arch mirrors, so that job is the Arch verification. An AppImage remains optional (qualified-opinion/MediaShrink#15).
+
 All review items are addressed. Remaining work is the target-machine acceptance checklist in docs/RELEASE.md, then packaging.
 
 See docs/RELEASE.md for the packaging assessment, license inventory decision, interruption behavior and explicit manual acceptance checklist. AppImage and public release are deferred until native acceptance and an actual packaged artifact test. Milestone 6 is implementation-complete but acceptance remains open. Next: target-machine acceptance. Do not merge or publish automatically.

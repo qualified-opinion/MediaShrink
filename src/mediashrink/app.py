@@ -7,7 +7,7 @@ import sys
 from threading import Event, Lock
 
 from PySide6.QtCore import QThread, Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
+from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QFileDialog, QHeaderView, QHBoxLayout, QLabel,
     QFrame, QMainWindow, QMessageBox, QProgressBar, QPushButton, QScrollArea, QSpinBox, QTableView, QVBoxLayout,
@@ -538,6 +538,9 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("MediaShrink")
     app.setOrganizationName("MediaShrink")
+    # Matches packaging/mediashrink.desktop, so Wayland desktops show the right name and icon.
+    app.setDesktopFileName("mediashrink")
+    app.setWindowIcon(QIcon.fromTheme("mediashrink"))
     window = MainWindow()
     window.show()
     return app.exec()

@@ -14,12 +14,32 @@ Import skips symlink files/folders, unsupported extensions, and duplicate absolu
 
 **Cancel import** keeps files already discovered; **Clear queue** removes the queue and imported-folder restrictions. Scanning happens in a background thread. Closing requests cancellation and waits for the scan to stop; an in-progress filesystem operation on a stalled mount may delay cancellation. Import creates no output files. Compression uses a private temporary directory in the chosen output folder.
 
-## Run on Omarchy / Arch
+## Install on Omarchy / Arch
 
-Use the distribution's Qt bindings, avoiding a separate Qt installation:
+MediaShrink installs as a normal Arch package, built on your computer from this repository with Arch's own Python, Qt, FFmpeg and libvips:
 
 ```bash
-sudo pacman -Syu --needed python python-pip pyside6 git libvips libheif python-pyvips ffmpeg
+sudo pacman -S --needed git base-devel
+git clone https://github.com/qualified-opinion/MediaShrink.git
+cd MediaShrink/packaging/arch
+makepkg -sif
+```
+
+`makepkg` installs any missing dependencies, runs the test suite as a self-check, and installs the package (it asks for your password). MediaShrink then appears in the app launcher (Super + Space on Omarchy) with its icon; `mediashrink` also starts it from a terminal.
+
+- **Update:** `cd MediaShrink && git pull && cd packaging/arch && makepkg -sif`
+- **Uninstall:** `sudo pacman -R mediashrink` (compressed outputs and results logs are not touched)
+- **NVIDIA encoding** needs the NVIDIA driver (`nvidia-utils`), which Omarchy installs on NVIDIA laptops.
+- If the self-check fails on your system, `makepkg -sif --nocheck` installs anyway; please report the failing test.
+
+CI builds and installs the same package in an Arch Linux container on every change and keeps the built `.pkg.tar.zst` as a download (`mediashrink-arch-package`); it can be installed with `sudo pacman -U mediashrink-*.pkg.tar.zst`.
+
+## Development setup
+
+To run directly from the checkout while changing the code, use the distribution's Qt bindings in a virtual environment:
+
+```bash
+sudo pacman -Syu --needed python python-pip python-setuptools pyside6 git libvips libheif python-pyvips ffmpeg
 git clone https://github.com/qualified-opinion/MediaShrink.git
 cd MediaShrink
 python -m venv --system-site-packages .venv
@@ -28,7 +48,7 @@ python -m pip install --no-deps --no-build-isolation -e .
 mediashrink
 ```
 
-The editable install requires setuptools 68 or newer. If it is unavailable in the environment, install it with `python -m pip install 'setuptools>=68'` and repeat the editable install. Use `python -m mediashrink` as an alternative launcher.
+The editable install requires setuptools 68 or newer. Use `python -m mediashrink` as an alternative launcher. If you installed this way before and now use the package, you can delete the `.venv` folder.
 
 For a conventional isolated development environment (Python 3.11+):
 
@@ -49,7 +69,7 @@ python -m pip install build
 python -m build
 ```
 
-The wheel and source archive are Python packages, not self-contained Linux applications. Installation needs dependencies; the application itself makes no network requests.
+The wheel and source archive are Python packages, not self-contained Linux applications; on Arch, use the package above. Installation needs dependencies; the application itself makes no network requests.
 
 ## Planned version 0.1
 

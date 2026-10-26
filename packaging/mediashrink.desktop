@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=MediaShrink
+GenericName=Photo and Video Compressor
+Comment=Compress photos and videos offline into a separate folder
+Exec=mediashrink
+Icon=mediashrink
+Terminal=false
+Categories=Utility;
+Keywords=compress;shrink;photo;video;heic;jpeg;mp4;
+StartupWMClass=mediashrink
