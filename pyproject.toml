@@ -8,7 +8,12 @@ version = "0.1.0.dev1"
 description = "Offline photo and video compression for Linux"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["PySide6>=6.8,<7"]
+dependencies = [
+    # PySide6 6.12.0 drops a reference to True on every signal emit, which crashes
+    # Python 3.11 after a few thousand progress updates; 3.12+ bools are immortal.
+    "PySide6>=6.8,<7,!=6.12.0; python_version < '3.12'",
+    "PySide6>=6.8,<7; python_version >= '3.12'",
+]
 
 [project.optional-dependencies]
 photos = ["pyvips>=2.2,<4"]

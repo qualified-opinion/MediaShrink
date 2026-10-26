@@ -23,6 +23,8 @@ Final round of review improvements:
 - File types: .m4v, .3gp, .avi (Motion JPEG 4:2:2 is accepted and output as 4:2:0) and .heif (output .heic).
 - Window: remove selected rows (button or Delete), drag-and-drop import, Open output folder, middle-elided paths, stretchable status column, two-row settings, scrolling content at small sizes, encoder note reset on Clear queue, progress bar accessible name per mode.
 
+Dependency note: PySide6 6.12.0 loses a reference to `True` on every signal emit; on Python 3.11 this crashes the app (and CI) after a few thousand emits. pyproject excludes 6.12.0 on Python < 3.12 only; revisit when a fixed release appears.
+
 All review items are addressed. Remaining work is the target-machine acceptance checklist in docs/RELEASE.md, then packaging.
 
 See docs/RELEASE.md for the packaging assessment, license inventory decision, interruption behavior and explicit manual acceptance checklist. AppImage and public release are deferred until native acceptance and an actual packaged artifact test. Milestone 6 is implementation-complete but acceptance remains open. Next: target-machine acceptance. Do not merge or publish automatically.
