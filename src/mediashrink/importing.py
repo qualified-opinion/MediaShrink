@@ -8,8 +8,9 @@ from threading import Event
 from typing import Callable, Iterable
 
 
-VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".mkv"})
-PHOTO_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".heic"})
+# .3gp is old phone video; .avi is mostly Motion JPEG from older cameras.
+VIDEO_EXTENSIONS = frozenset({".mp4", ".m4v", ".mov", ".mkv", ".3gp", ".avi"})
+PHOTO_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"})
 MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | PHOTO_EXTENSIONS
 
 

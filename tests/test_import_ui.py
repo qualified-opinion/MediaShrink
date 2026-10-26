@@ -10,7 +10,8 @@ import time
 import unittest
 from unittest.mock import patch
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QMimeData, QPointF, QTimer, QUrl, Qt
+from PySide6.QtGui import QDropEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -69,6 +70,32 @@ class ImportUiTest(unittest.TestCase):
         self.assertEqual(self.window.queue.rowCount(), 0)
         self.assertEqual(self.window.source_folders, set())
         self.assertFalse(self.window.start_button.isEnabled())
+
+    def test_remove_selected_drop_and_open_output(self):
+        second = self.media / 'clip.m4v'
+        second.write_bytes(b'12345')
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(str(self.media))])
+        drop = QDropEvent(QPointF(10, 10), Qt.DropAction.CopyAction, mime,
+                          Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
+        self.window.dropEvent(drop)
+        self.until(lambda: self.window.worker is None)
+        self.assertEqual(self.window.queue.rowCount(), 2)
+        self.assertFalse(self.window.remove_button.isEnabled())
+        row = [item.path for item in self.window.queue.files].index(second)
+        self.window.queue.results[1 - row] = ('Saved: x', '1.0 B')
+        self.window.table.selectRow(row)
+        self.assertTrue(self.window.remove_button.isEnabled())
+        self.window.remove_selected()
+        self.assertEqual([item.path for item in self.window.queue.files], [self.image])
+        self.assertEqual(self.window.queue.results, {0: ('Saved: x', '1.0 B')})
+        self.assertEqual(self.window.queue.total_bytes, 9)
+        self.assertFalse(self.window.open_output_button.isEnabled())
+        self.assertTrue(self.window.set_destination(self.output))
+        self.assertTrue(self.window.open_output_button.isEnabled())
+        with patch('mediashrink.app.QDesktopServices.openUrl') as open_url:
+            self.window.open_output()
+        open_url.assert_called_once_with(QUrl.fromLocalFile(str(self.output)))
 
     def test_destination_first_rejects_import_overlap(self):
         self.assertTrue(self.window.set_destination(self.media))

@@ -115,6 +115,21 @@ class PhotoTest(unittest.TestCase):
         self.assertEqual((result.width, result.height), (400, 300))
         self.assertIn('2020:01:02', result.get('exif-ifd2-DateTimeOriginal'))
 
+    def test_minimum_saving_discards_small_gains(self):
+        source = self.root / 'photo.jpg'
+        photo_like().jpegsave(str(source), Q=95)
+        target, size = compress(source, self.output, (), Event(), lambda _: None, min_saving=0.99)
+        self.assertIsNone(target)
+        self.assertGreater(size, 0)
+        self.assertEqual([p for p in self.output.iterdir()], [])
+
+    @unittest.skipUnless(heic_encoder_available(), 'libheif has no HEVC encoder')
+    def test_heif_extension_produces_heic(self):
+        source = self.root / 'scan.heif'
+        photo_like().heifsave(str(source), Q=90, compression='hevc')
+        target, _ = compress(source, self.output, (), Event(), lambda _: None)
+        self.assertEqual(target.name, 'scan-compressed.heic')
+
     def test_high_bit_depth_rejected(self):
         source = self.root / 'deep.png'
         pyvips.Image.black(20, 20).cast('ushort').pngsave(str(source), bitdepth=16)
