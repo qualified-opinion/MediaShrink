@@ -4,7 +4,9 @@ This is a development build, not an accepted public release. The automated imple
 
 ## Build artifacts
 
-CI builds a Python wheel and source archive and uploads them for inspection. They require Python and separately installed Qt, FFmpeg and libvips dependencies. They are not AppImages. Use README's native Arch setup for testing.
+CI builds a Python wheel and source archive and uploads them for inspection. They require Python and separately installed Qt, FFmpeg and libvips dependencies. They are not AppImages.
+
+For Omarchy/Arch, `packaging/arch/PKGBUILD` builds a native package on the user's machine against Arch's own Python, Qt, FFmpeg and libvips (`makepkg -sif`), with a desktop launcher and icon. Nothing third-party is bundled, so it raises none of the AppImage redistribution questions below. CI builds, installs and smoke-tests this package in an Arch Linux container and uploads it as `mediashrink-arch-package`. This is the recommended install for the target laptop.
 
 AppImage assessment: defer bundling until the native Omarchy build has passed the checks below. A self-contained image must account for the photo subprocess using the correct Python environment, Qt Wayland plugins, external FFmpeg/libvips codec support, and host NVIDIA driver compatibility. A wheel renamed to AppImage would not meet these requirements.
 

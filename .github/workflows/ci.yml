@@ -32,3 +32,35 @@ jobs:
           name: mediashrink-python-${{ matrix.python-version }}
           path: dist/*
           if-no-files-found: error
+  arch-package:
+    # Builds and installs the Arch/Omarchy package exactly as users do (makepkg, pacman -U).
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install build tools and package dependencies
+        run: pacman -Syu --noconfirm --needed base-devel git python pyside6 python-pyvips libvips libheif ffmpeg python-build python-installer python-setuptools python-wheel desktop-file-utils
+      - uses: actions/checkout@v4
+      - name: Build package (makepkg refuses to run as root)
+        run: |
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          su builder -c "cd '$GITHUB_WORKSPACE/packaging/arch' && makepkg --noconfirm"
+      - name: Install package and smoke-test the installed app
+        run: |
+          set -x  # Show which check fails; `test` itself prints nothing.
+          pacman -U --noconfirm packaging/arch/mediashrink-*.pkg.tar.zst
+          desktop-file-validate /usr/share/applications/mediashrink.desktop
+          test -f /usr/share/icons/hicolor/scalable/apps/mediashrink.svg
+          # /usr/sbin links to /usr/bin on Arch, so check the file rather than the PATH spelling.
+          test -x /usr/bin/mediashrink
+          command -v mediashrink
+          cd /
+          QT_QPA_PLATFORM=offscreen python -c "from PySide6.QtWidgets import QApplication; from mediashrink.app import MainWindow; app = QApplication([]); w = MainWindow(); w.show(); app.processEvents(); print('window ok')"
+          python -c "import pyvips; pyvips.Image.black(16, 16, bands=3).heifsave_buffer(compression='hevc'); print('HEIC encoder available')" || echo "::warning::Arch libheif has no HEVC encoder; HEIC photos will be reported as skipped"
+          ffmpeg -hide_banner -encoders | grep -E 'libx264|libx265|nvenc'
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mediashrink-arch-package
+          path: packaging/arch/*.pkg.tar.zst
+          if-no-files-found: error

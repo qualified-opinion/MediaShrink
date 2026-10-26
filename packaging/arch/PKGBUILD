@@ -1,0 +1,42 @@
+# Arch Linux / Omarchy package, built from this repository checkout:
+#   cd packaging/arch && makepkg -sif
+# -s installs missing dependencies, -i installs the package, -f rebuilds after updates.
+# Uses Arch's own Python, Qt, FFmpeg and libvips; nothing is bundled.
+
+pkgname=mediashrink
+pkgver=0.1.0.dev1
+pkgrel=1
+pkgdesc='Offline photo and video compression for Linux'
+arch=('any')
+url='https://github.com/qualified-opinion/MediaShrink'
+license=('LicenseRef-none')  # No licence chosen yet: qualified-opinion/MediaShrink#14
+depends=('python' 'pyside6' 'python-pyvips' 'libvips' 'libheif' 'ffmpeg')
+makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+optdepends=('nvidia-utils: NVIDIA NVENC video encoding')
+
+_repo="$startdir/../.."
+
+prepare() {
+  # Build from a copy so the checkout gets no build/ or egg-info folders.
+  rm -rf "$srcdir/$pkgname"
+  mkdir -p "$srcdir/$pkgname"
+  cp -r "$_repo/src" "$_repo/tests" "$_repo/pyproject.toml" "$_repo/README.md" "$srcdir/$pkgname/"
+}
+
+build() {
+  cd "$srcdir/$pkgname"
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  # Real synthetic media through the system FFmpeg and libvips; skip with makepkg --nocheck.
+  cd "$srcdir/$pkgname"
+  QT_QPA_PLATFORM=offscreen PYTHONPATH=src python -m unittest discover -s tests
+}
+
+package() {
+  cd "$srcdir/$pkgname"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -Dm644 "$_repo/packaging/mediashrink.desktop" "$pkgdir/usr/share/applications/mediashrink.desktop"
+  install -Dm644 "$_repo/packaging/mediashrink.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/mediashrink.svg"
+}

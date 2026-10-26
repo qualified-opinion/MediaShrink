@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>MediaShrink</title>
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="#2563eb"/>
+  <!-- Photo: frame, hills and sun -->
+  <rect x="30" y="26" width="68" height="54" rx="8" fill="#ffffff"/>
+  <path d="M36 74 L54 52 L66 66 L74 58 L92 74 Z" fill="#60a5fa"/>
+  <circle cx="80" cy="40" r="7" fill="#fbbf24"/>
+  <!-- Two arrows pointing inwards: shrink -->
+  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M28 98 H56 M48 90 L56 98 L48 106"/>
+    <path d="M100 98 H72 M80 90 L72 98 L80 106"/>
+  </g>
+</svg>

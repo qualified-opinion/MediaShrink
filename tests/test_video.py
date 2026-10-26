@@ -75,9 +75,15 @@ class VideoTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             source = root / 'hdr.mov'
-            ffmpeg('-f', 'lavfi', '-i', 'testsrc2=size=128x96:rate=24', '-t', '1', '-c:v', 'libx265',
-                   '-x265-params', 'log-level=error:crf=5', '-pix_fmt', 'yuv420p10le', '-color_primaries', 'bt2020',
-                   '-color_trc', 'arib-std-b67', '-colorspace', 'bt2020nc', source)
+            # Tag the frames themselves, like a camera does: newer FFmpeg takes colour
+            # properties from frames rather than from -color_trc style output options.
+            ffmpeg('-f', 'lavfi', '-i', 'testsrc2=size=128x96:rate=24', '-t', '1',
+                   '-vf', 'setparams=color_primaries=bt2020:color_trc=arib-std-b67:colorspace=bt2020nc:range=tv',
+                   '-c:v', 'libx265', '-x265-params', 'log-level=error:crf=5', '-pix_fmt', 'yuv420p10le', source)
+            fixture = probe(source, Event())['streams'][0]
+            self.assertEqual({key: fixture.get(key) for key in ('pix_fmt', 'color_transfer', 'color_primaries', 'color_space')},
+                             {'pix_fmt': 'yuv420p10le', 'color_transfer': 'arib-std-b67', 'color_primaries': 'bt2020',
+                              'color_space': 'bt2020nc'}, 'synthetic HLG source was not tagged as HLG by this FFmpeg')
             output = root / 'output'
             output.mkdir()
             target, _ = compress(source, output, (), Event(), lambda p: None)
