@@ -4,6 +4,27 @@ from datetime import datetime
 from pathlib import Path
 
 COLUMNS = ('Original file', 'Output file', 'Original bytes', 'Output bytes', 'Saved bytes', 'Saved %', 'Result', 'Details')
+DONE_RESULTS = ('Saved', 'No reduction', 'Already done')
+
+
+def previous_results(destination):
+    """Map each original already handled in this output folder to (original bytes, output file).
+
+    Reads earlier results logs oldest first, so later batches win. Unreadable logs are ignored.
+    """
+    done = {}
+    for log in sorted(Path(destination).glob('mediashrink-results-*.csv')):
+        try:
+            with open(log, newline='', encoding='utf-8-sig') as file:
+                for row in csv.DictReader(file):
+                    try:
+                        if row.get('Result') in DONE_RESULTS:
+                            done[row['Original file']] = (int(row['Original bytes']), row.get('Output file') or '')
+                    except (ValueError, KeyError, TypeError):
+                        continue  # A hand-edited or damaged row is ignored.
+        except (OSError, csv.Error, UnicodeDecodeError):
+            continue
+    return done
 
 
 class ResultsLog:

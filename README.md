@@ -2,7 +2,7 @@
 
 An offline Linux desktop app for batch photo and video compression, targeting Omarchy (Arch Linux) and optional NVIDIA acceleration.
 
-**Current status: CPU photo and video compression.** Add files or recursively scan folders, see original sizes, cancel import, clear the queue, and choose a separate output folder. CPU video compression is available through **Compress photos and videos**. Install FFmpeg (`sudo pacman -Syu --needed ffmpeg`). Default output is CPU H.264/AAC MP4 using Balanced quality; Optional NVIDIA H.264/HEVC encoding is available. Portrait (rotated) phone videos are supported, and HLG HDR video (the iPhone default) is kept as 10-bit HDR HEVC. Timecode and camera metadata tracks are dropped; HDR10/PQ, mirrored video, subtitles and extra audio/video streams are explicitly skipped. Outputs are fully decoded for validation and only kept if smaller. Outputs mirror the imported folder structure, existing outputs get a numbered filename, every batch writes a CSV results log, and originals are retained. Import reads file information without opening media contents or modifying originals.
+**Current status: CPU photo and video compression.** Add files or recursively scan folders, see original sizes, cancel import, clear the queue, and choose a separate output folder. CPU video compression is available through **Compress photos and videos**. Install FFmpeg (`sudo pacman -Syu --needed ffmpeg`). Default output is CPU H.264 MP4 using Balanced quality; AAC audio (the usual phone audio) is copied unchanged and other audio becomes AAC at no more than its original bitrate, up to 192 kbps; Optional NVIDIA H.264/HEVC encoding is available. Portrait (rotated) phone videos are supported, and HLG HDR video (the iPhone default) is kept as 10-bit HDR HEVC. Timecode and camera metadata tracks are dropped; HDR10/PQ, mirrored video, subtitles and extra audio/video streams are explicitly skipped. Outputs are fully decoded for validation and only kept if smaller. Outputs mirror the imported folder structure, existing outputs get a numbered filename, every batch writes a CSV results log, files already compressed into the same output folder are skipped on later runs, and originals are retained. Import reads file information without opening media contents or modifying originals.
 
 ## Prepare a batch
 
@@ -59,7 +59,7 @@ The wheel and source archive are Python packages, not self-contained Linux appli
 - Progress, output validation, and measured savings.
 - Separate output destination; originals are never automatically overwritten or deleted.
 
-FFmpeg and FFprobe are required for video compression; importing alone does not require them. NVIDIA functionality must eventually be tested with a real encode on the target laptop. See [the roadmap](docs/ROADMAP.md) and [handover](HANDOVER.md) for the next steps.
+FFmpeg and FFprobe are required for video compression; importing alone does not require them. If they are missing, each video reports how to install FFmpeg. NVIDIA functionality must eventually be tested with a real encode on the target laptop. See [the roadmap](docs/ROADMAP.md) and [handover](HANDOVER.md) for the next steps.
 
 ## Photo compression
 
@@ -79,7 +79,7 @@ The probe and all processing run off the UI thread; controls are locked for the 
 
 ## Batch results and release status
 
-Overall progress weights each queued file equally, so it is not a time estimate. The final summary shows saved outputs, no-reduction results, failed/unsupported files, cancellations and files not processed. Reduction percentages use only successfully saved files. Originals remain on disk, so these figures do not represent space already freed. Full error/output paths are available in table tooltips.
+Overall progress weights each queued file equally, so it is not a time estimate. The final summary shows saved outputs, no-reduction results, files already done in an earlier batch, unsupported (skipped) files, real failures, cancellations and files not processed. Reduction percentages use only successfully saved files. Originals remain on disk, so these figures do not represent space already freed. Full error/output paths are available in table tooltips.
 
 Before each file, the destination needs twice the source size plus 64 MiB free and must be writable. Space can still run out during work. exFAT/FAT32 drives and other destinations without hard links are supported: the output name is claimed exclusively and the finished file is renamed onto it, so an existing file is never replaced.
 
@@ -87,4 +87,6 @@ Before each file, the destination needs twice the source size plus 64 MiB free a
 
 Files from an added folder keep their layout under a folder with the same name, for example `Output/Phone/DCIM/100APPLE/IMG_0001-compressed.jpg`; individually added files go directly in the output folder. Imported folders with the same name share an output folder, and clashing names get numeric suffixes.
 
-Each batch writes `mediashrink-results-<date>-<time>.csv` to the output folder (UTF-8, opens in spreadsheet apps). It lists every queued original with its output file, sizes, saving and result (Saved, No reduction, Skipped, Failed, Cancelled or Not processed). Use it to check which output belongs to which original before you remove any original yourself. See [release readiness](docs/RELEASE.md) for interruption behavior, native acceptance checks and the AppImage assessment. CI provides Python package artifacts; no self-contained app or public release is published yet.
+Each batch writes `mediashrink-results-<date>-<time>.csv` to the output folder (UTF-8, opens in spreadsheet apps). It lists every queued original with its output file, sizes, saving and result (Saved, No reduction, Skipped, Failed, Cancelled or Not processed). Use it to check which output belongs to which original before you remove any original yourself.
+
+**Skip files already compressed into this output folder** (on by default) reads the earlier results logs in the output folder. An original is skipped when a log lists it as saved, no reduction or already done, its size is unchanged, and its saved output still exists. This lets you re-add a phone folder later and compress only the new files. Untick it to compress everything again, for example with a different quality preset. Deleting or moving the results logs makes MediaShrink forget earlier batches. See [release readiness](docs/RELEASE.md) for interruption behavior, native acceptance checks and the AppImage assessment. CI provides Python package artifacts; no self-contained app or public release is published yet.

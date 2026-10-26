@@ -6,7 +6,7 @@ from threading import Event
 
 from PySide6.QtCore import QThread, Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QFileDialog, QHeaderView, QHBoxLayout, QLabel, QMainWindow,
+    QApplication, QCheckBox, QComboBox, QFileDialog, QHeaderView, QHBoxLayout, QLabel, QMainWindow,
     QMessageBox, QProgressBar, QPushButton, QTableView, QVBoxLayout, QWidget,
 )
 
@@ -16,7 +16,7 @@ from mediashrink.video import compress, Cancelled, choose_encoder
 from mediashrink.presets import PRESETS, ENCODERS
 from mediashrink.photo import compress as compress_photo
 from mediashrink.importing import VIDEO_EXTENSIONS
-from mediashrink.report import ResultsLog
+from mediashrink.report import ResultsLog, previous_results
 
 
 class ImportThread(QThread):
@@ -49,16 +49,26 @@ class MediaThread(QThread):
     overall_progress = Signal(int)
     log_status = Signal(str)
 
-    def __init__(self, files, destination, roots, parent=None, preset="Balanced", encoder="libx264"):
-        self.preset, self.encoder = preset, encoder
+    def __init__(self, files, destination, roots, parent=None, preset="Balanced", encoder="libx264", skip_done=False):
+        self.preset, self.encoder, self.skip_done = preset, encoder, skip_done
         super().__init__(parent)
         self.files, self.destination, self.roots = files, destination, roots
         self.cancel = Event()
+        self.earlier = {}
+
+    def earlier_output(self, item, size):
+        """Output path ('' for no reduction) from an earlier batch into this folder, or None."""
+        found = self.earlier.get(str(item.path))
+        if found is None or found[0] != size or (found[1] and not Path(found[1]).is_file()):
+            return None
+        return found[1]
 
     def run(self):
-        totals = dict(total=len(self.files), completed=0, saved=0, skipped=0, failed=0,
-                      cancelled=0, original_bytes=0, output_bytes=0)
+        totals = dict(total=len(self.files), completed=0, saved=0, skipped=0, previous=0, unsupported=0,
+                      failed=0, cancelled=0, original_bytes=0, output_bytes=0)
         self.batch_status.emit(totals.copy())
+        if self.skip_done:
+            self.earlier = previous_results(self.destination)
         try:
             log = ResultsLog(self.destination)
             self.log_status.emit(f"Results log: {log.path}")
@@ -86,16 +96,26 @@ class MediaThread(QThread):
                 try:
                     self.update.emit(row, "Checking media", "—")
                     source_size = item.path.stat().st_size
-                    target, size = engine(item.path, self.destination, self.roots, self.cancel,
-                        lambda percent, row=row: self.report_progress(row, percent), **options)
-                    totals['completed'] += 1
-                    totals['saved' if target else 'skipped'] += 1
-                    if target:
-                        totals['original_bytes'] += source_size
-                        totals['output_bytes'] += size
-                    self.update.emit(row, f"Saved: {target}" if target else "Skipped: no size reduction", format_size(size) if target else "—")
-                    if log is not None:
-                        log.add(item.path, "Saved" if target else "No reduction", original=source_size, target=target, size=size)
+                    earlier = self.earlier_output(item, source_size)
+                    if earlier is not None:
+                        # Re-running a batch must not create numbered duplicates of finished files.
+                        totals['completed'] += 1
+                        totals['previous'] += 1
+                        self.update.emit(row, f"Already done: {earlier or 'no size reduction'}", "—")
+                        if log is not None:
+                            log.add(item.path, "Already done", "Found in an earlier results log", source_size,
+                                    earlier or None, Path(earlier).stat().st_size if earlier else None)
+                    else:
+                        target, size = engine(item.path, self.destination, self.roots, self.cancel,
+                            lambda percent, row=row: self.report_progress(row, percent), **options)
+                        totals['completed'] += 1
+                        totals['saved' if target else 'skipped'] += 1
+                        if target:
+                            totals['original_bytes'] += source_size
+                            totals['output_bytes'] += size
+                        self.update.emit(row, f"Saved: {target}" if target else "Skipped: no size reduction", format_size(size) if target else "—")
+                        if log is not None:
+                            log.add(item.path, "Saved" if target else "No reduction", original=source_size, target=target, size=size)
                 except Cancelled:
                     totals["cancelled"] += 1
                     self.update.emit(row, "Cancelled", "—")
@@ -104,11 +124,12 @@ class MediaThread(QThread):
                         log.add(item.path, "Cancelled", original=source_size)
                     break
                 except Exception as exc:
+                    unsupported = str(exc).startswith("Skipped")
                     totals['completed'] += 1
-                    totals['failed'] += 1
+                    totals['unsupported' if unsupported else 'failed'] += 1
                     self.update.emit(row, str(exc), "—")
                     if log is not None:
-                        log.add(item.path, "Skipped" if str(exc).startswith("Skipped") else "Failed", str(exc), source_size)
+                        log.add(item.path, "Skipped" if unsupported else "Failed", str(exc), source_size)
                 self.overall_progress.emit(int(totals['completed'] / max(1, totals['total']) * 100))
                 self.batch_status.emit(totals.copy())
         finally:
@@ -165,7 +186,11 @@ class MainWindow(QMainWindow):
         settings.addWidget(self.quality)
         settings.addWidget(QLabel('Video encoder'))
         settings.addWidget(self.encoder)
+        self.skip_done = QCheckBox('Skip files already compressed into this output folder')
+        self.skip_done.setChecked(True)
+        self.skip_done.setToolTip('Uses the results logs in the output folder. Untick to compress them again.')
         layout.addLayout(settings)
+        layout.addWidget(self.skip_done)
         self.encoder_note = QLabel('Photos use CPU. PNG/WebP remain lossless for every preset.')
         self.encoder_note.setWordWrap(True)
         self.encoder_note.setTextFormat(Qt.TextFormat.PlainText)
@@ -263,6 +288,7 @@ class MainWindow(QMainWindow):
             button.setEnabled(not busy)
         self.quality.setEnabled(not busy)
         self.encoder.setEnabled(not busy)
+        self.skip_done.setEnabled(not busy)
         self.cancel_button.setEnabled(busy)
         if not busy:
             self.cancel_button.setText("Cancel import")
@@ -355,7 +381,7 @@ class MainWindow(QMainWindow):
     def start_compression(self):
         if self.worker is not None or self.destination is None:
             return
-        self.worker = MediaThread(list(self.queue.files), self.destination, set(self.source_folders), self, self.quality.currentText(), ENCODERS[self.encoder.currentText()])
+        self.worker = MediaThread(list(self.queue.files), self.destination, set(self.source_folders), self, self.quality.currentText(), ENCODERS[self.encoder.currentText()], self.skip_done.isChecked())
         self.encoder_note.setText("Photos use CPU; video encoder: " + self.encoder.currentText())
         self.worker.encoder_status.connect(self.encoder_note.setText)
         self.details.clear()
@@ -381,7 +407,8 @@ class MainWindow(QMainWindow):
         pending = totals['total'] - totals['completed'] - totals['cancelled']
         self.batch_summary.setText(
             f"{totals['completed']}/{totals['total']} processed · {totals['saved']} saved · "
-            f"{totals['skipped']} no reduction · {totals['failed']} failed/unsupported · "
+            f"{totals['skipped']} no reduction · {totals['previous']} already done · "
+            f"{totals['unsupported']} unsupported · {totals['failed']} failed · "
             f"{totals['cancelled']} cancelled · {pending} not processed\n"
             f"Saved outputs are {format_size(reduction)} smaller ({percent:.1f}%). Originals remain on disk."
         )

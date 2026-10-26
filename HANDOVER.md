@@ -10,6 +10,13 @@ Acceptance fixes from code review (this branch):
 
 Validation includes synthetic real media tests (portrait, timecode track, HLG HDR, HEIC, lossy WebP), a simulated no-hard-link destination, low-space cleanup, mixed success/no-reduction/failure totals, results-log contents and cancellation counts. Run the full unittest suite and package build. Native Omarchy/RTX 3050/HEIC/exFAT acceptance and real iPhone/Android media cannot be tested in this environment.
 
-Known limitations still open from review: very long encodes (about 4 hours of encoding time) hit the 4 MB tool-output limit in `video.run`; audio is always re-encoded to 192 kbps AAC; unsupported files are counted with failures in the on-screen totals; missing FFmpeg gives a raw "No such file" error; re-running a batch creates numbered duplicates; no minimum-saving threshold; one photo subprocess at a time.
+Second round of review fixes:
+- Long encodes: ffmpeg progress output is parsed but no longer stored, so the 4 MB output cap only applies to commands whose output is read (ffprobe, photo worker).
+- Audio: AAC is copied; other audio becomes AAC at no more than the source bitrate (32–192 kbps).
+- Totals separate unsupported (skipped) files from real failures, and count files already done.
+- Missing FFmpeg gives an install instruction instead of a raw "No such file" error.
+- Re-runs skip originals that earlier results logs in the output folder record as done (same size, output present); a checkbox, on by default, turns this off.
+
+Still open from review: no minimum-saving threshold; one photo subprocess at a time; screen polish (status column width, remove from queue, drag-and-drop, open output folder); `.m4v`/`.heif`/`.avif` not accepted.
 
 See docs/RELEASE.md for the packaging assessment, license inventory decision, interruption behavior and explicit manual acceptance checklist. AppImage and public release are deferred until native acceptance and an actual packaged artifact test. Milestone 6 is implementation-complete but acceptance remains open. Next: the open limitations above, then target-machine acceptance. Do not merge or publish automatically.

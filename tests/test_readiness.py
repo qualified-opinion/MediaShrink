@@ -67,7 +67,7 @@ class ReadinessTest(unittest.TestCase):
             with patch('mediashrink.app.compress_photo', side_effect=[(Path(folder)/'out.jpg',40),(None,0),RuntimeError('bad media')]):
                 worker.run()
             last = summaries[-1]
-            self.assertEqual((last['saved'],last['skipped'],last['failed']), (1,1,1))
+            self.assertEqual((last['saved'],last['skipped'],last['failed'],last['unsupported']), (1,1,1,0))
             self.assertEqual(last['original_bytes']-last['output_bytes'],60)
             self.assertEqual(progress[-1],100)
 
@@ -94,6 +94,45 @@ class ReadinessTest(unittest.TestCase):
                               (str(paths[2]), 'Cancelled'), (str(paths[3]), 'Not processed')])
             self.assertEqual((rows[0]['Output file'], rows[0]['Saved bytes'], rows[0]['Saved %']),
                              (str(output / '0-compressed.jpg'), '60', '60.0'))
+
+    def test_rerun_skips_files_already_done_in_this_output_folder(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            output = root / 'out'
+            output.mkdir()
+            paths = [root / f'{n}.jpg' for n in range(3)]
+            for path in paths:
+                path.write_bytes(b'x' * 100)
+            saved = output / '0-compressed.jpg'
+            saved.write_bytes(b'y' * 40)
+            first = [(saved, 40), (None, 0), ValueError('Skipped: animated or multi-image photo')]
+            with patch('mediashrink.app.compress_photo', side_effect=first):
+                MediaThread([MediaFile(p, 100) for p in paths], output, ()).run()
+            paths[1].write_bytes(b'x' * 99)  # Changed since the first batch, so it is compressed again.
+            worker = MediaThread([MediaFile(p, 100) for p in paths], output, (), skip_done=True)
+            summaries = []
+            worker.batch_status.connect(summaries.append)
+            with patch('mediashrink.app.compress_photo', side_effect=[(None, 0), (None, 0)]) as engine:
+                worker.run()
+            self.assertEqual([c.args[0] for c in engine.call_args_list], paths[1:])
+            last = summaries[-1]
+            self.assertEqual((last['previous'], last['skipped'], last['unsupported'], last['failed']), (1, 2, 0, 0))
+            with patch('mediashrink.app.compress_photo', side_effect=[(None, 0)] * 3) as engine:
+                MediaThread([MediaFile(p, 100) for p in paths], output, (), skip_done=False).run()
+            self.assertEqual(engine.call_count, 3)
+
+    def test_unsupported_counted_separately_from_failures(self):
+        with TemporaryDirectory() as folder:
+            source = Path(folder) / 'photo.jpg'
+            source.write_bytes(b'x')
+            output = Path(folder) / 'out'
+            output.mkdir()
+            worker = MediaThread([MediaFile(source, 1)] * 2, output, ())
+            summaries = []
+            worker.batch_status.connect(summaries.append)
+            with patch('mediashrink.app.compress_photo', side_effect=[ValueError('Skipped: HDR'), RuntimeError('broken')]):
+                worker.run()
+            self.assertEqual((summaries[-1]['unsupported'], summaries[-1]['failed']), (1, 1))
 
     def test_cancel_does_not_claim_completion(self):
         with TemporaryDirectory() as folder:

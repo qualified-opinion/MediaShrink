@@ -14,9 +14,17 @@ from mediashrink.presets import video_options
 from mediashrink.storage import Cancelled, check_destination, output_folder, publish
 
 
-def run(command, cancel, progress=lambda value: None, timeout=None):
+def run(command, cancel, progress=None, timeout=None):
+    """Run a tool; with a progress callback, stdout is a progress stream and is not kept."""
     with tempfile.TemporaryFile() as errors:
-        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=errors)
+        try:
+            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=errors)
+        except FileNotFoundError:
+            name = Path(command[0]).name
+            if name in ('ffmpeg', 'ffprobe'):
+                raise RuntimeError(f'FFmpeg is not installed ({name} not found). '
+                                   'Install it with: sudo pacman -S --needed ffmpeg') from None
+            raise RuntimeError(f'{name} is not installed') from None
         output = bytearray()
         started = time.monotonic()
         selector = selectors.DefaultSelector()
@@ -33,10 +41,14 @@ def run(command, cancel, progress=lambda value: None, timeout=None):
                     if not chunk:
                         selector.unregister(key.fileobj)
                         continue
-                    output.extend(chunk)
-                    if len(output) > 4_000_000:
-                        raise RuntimeError('Unexpectedly large tool output')
+                    if progress is None:
+                        output.extend(chunk)
+                        if len(output) > 4_000_000:
+                            raise RuntimeError('Unexpectedly large tool output')
+                        continue
                     pending += chunk
+                    if len(pending) > 1_000_000:
+                        raise RuntimeError('Unexpected progress output')
                     while b'\n' in pending:
                         line, pending = pending.split(b'\n', 1)
                         if line.startswith(b'out_time_us='):
@@ -75,6 +87,8 @@ class VideoInfo:
     audio: int
     rotation: int
     hdr: bool
+    audio_codec: str | None = None
+    audio_bitrate: int | None = None
 
 
 def is_pure_rotation(text):
@@ -128,7 +142,20 @@ def inspect(data):
         raise ValueError('Skipped: odd video dimensions')
     if rotation % 180:
         width, height = height, width
-    return VideoInfo(duration, width, height, len(audio), rotation % 360, hdr)
+    codec = audio[0].get('codec_name') if audio else None
+    try:
+        bitrate = int(audio[0]['bit_rate']) if audio else None
+    except (KeyError, ValueError):
+        bitrate = None
+    return VideoInfo(duration, width, height, len(audio), rotation % 360, hdr, codec, bitrate)
+
+
+def audio_options(info):
+    """Copy AAC (the usual phone audio); otherwise encode AAC no larger than the source, up to 192 kbps."""
+    if info.audio_codec == 'aac':
+        return ['-c:a', 'copy']
+    bitrate = 192_000 if not info.audio_bitrate else min(192_000, max(32_000, info.audio_bitrate))
+    return ['-c:a', 'aac', '-b:a', str(bitrate)]
 
 
 def choose_encoder(requested, preset, cancel, notify):
@@ -166,7 +193,7 @@ def compress(source, destination, roots, cancel, progress, preset='Balanced', en
         # Rotation is applied to the pixels (ffmpeg autorotate), so outputs need no rotation flag.
         run(['ffmpeg', '-nostdin', '-v', 'error', '-n', '-i', str(source),
              '-map', '0:v:0', '-map', '0:a:0?', '-map_metadata', '0', *video_options(encoder, preset, info.hdr),
-             '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-progress', 'pipe:1', str(output)],
+             *audio_options(info), '-movflags', '+faststart', '-progress', 'pipe:1', str(output)],
             cancel, lambda seconds: progress(min(95, int(seconds / info.duration * 95))))
         result = inspect(probe(output, cancel))
         expected = (info.width, info.height, info.audio, 0, info.hdr)

@@ -1,9 +1,11 @@
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from threading import Event
 import unittest
+from unittest.mock import patch
 from mediashrink.video import compress, run, Cancelled, inspect, probe
 
 ROTATE_90 = '\n00000000:            0      -65536           0\n00000001:        65536           0           0\n00000002:            0           0  1073741824\n'
@@ -19,6 +21,13 @@ def stream_info(path):
     command = ['ffprobe', '-v', 'error', '-select_streams', 'v', '-show_entries',
                'stream=codec_tag_string,pix_fmt,color_transfer', '-of', 'json', str(path)]
     return json.loads(subprocess.run(command, capture_output=True, check=True).stdout)['streams'][0]
+
+
+def audio_info(path):
+    command = ['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_name,bit_rate',
+               '-of', 'json', str(path)]
+    stream = json.loads(subprocess.run(command, capture_output=True, check=True).stdout)['streams'][0]
+    return stream['codec_name'], int(stream['bit_rate'])
 
 
 def info(video, audio=1, extra=()):
@@ -97,6 +106,35 @@ class VideoTest(unittest.TestCase):
             inspect(info({}, extra=[{'codec_type': 'subtitle'}]))
         with self.assertRaisesRegex(ValueError, 'audio'):
             inspect(info({}, audio=2))
+
+    def test_audio_is_copied_or_not_enlarged(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            output = root / 'output'
+            output.mkdir()
+            for name, audio, codec in (('aac.mp4', ['-c:a', 'aac', '-b:a', '64k'], 'aac'),
+                                       ('mp3.mkv', ['-c:a', 'libmp3lame', '-b:a', '96k'], 'aac')):
+                source = root / name
+                ffmpeg('-f', 'lavfi', '-i', 'testsrc2=size=128x96:rate=24', '-f', 'lavfi', '-i', 'sine', '-t', '2',
+                       '-c:v', 'libx264', '-crf', '5', *audio, source)
+                target, _ = compress(source, output, (), Event(), lambda p: None)
+                (source_codec, source_rate), (out_codec, out_rate) = audio_info(source), audio_info(target)
+                self.assertEqual(out_codec, codec)
+                self.assertLessEqual(out_rate, source_rate * 1.1, name)
+
+    def test_long_progress_stream_is_not_capped(self):
+        # About five hours of ffmpeg -progress output; only the timestamps are needed.
+        script = 'import sys\nfor _ in range(36000): sys.stdout.write("frame=1\\nfps=10\\nout_time_us=2000000\\nspeed=0.3x\\nprogress=continue\\n" * 3)'
+        seen = []
+        self.assertEqual(run([sys.executable, '-c', script], Event(), seen.append), b'')
+        self.assertEqual(seen[-1], 2.0)
+        with self.assertRaisesRegex(RuntimeError, 'large tool output'):
+            run([sys.executable, '-c', script], Event())
+
+    def test_missing_ffmpeg_is_explained(self):
+        with patch('mediashrink.video.subprocess.Popen', side_effect=FileNotFoundError(2, 'missing', 'ffprobe')):
+            with self.assertRaisesRegex(RuntimeError, 'FFmpeg is not installed .*pacman'):
+                probe('clip.mp4', Event())
 
     def test_cancellation_reaps_process(self):
         event = Event()
