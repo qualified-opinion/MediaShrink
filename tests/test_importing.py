@@ -44,6 +44,16 @@ class DiscoveryTest(unittest.TestCase):
         self.assertEqual(report.source_folders, {self.media})
         self.assertEqual(before, {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in before})
 
+    def test_output_subfolder_mirrors_source_layout(self):
+        nested = self.make_file('DCIM/100APPLE/IMG_0001.JPG')
+        top = self.make_file('IMG_0002.JPG')
+        single = self.root / 'single.jpg'
+        single.write_bytes(b'x')
+        files, _ = self.scan([self.media, single])
+        self.assertEqual({f.path: f.folder for f in files}, {
+            nested: Path('phone backup/DCIM/100APPLE'), top: Path('phone backup'), single: Path(),
+        })
+
     def test_repeated_file_overlapping_roots_and_existing_queue(self):
         first = self.make_file('sub/a.mp4')
         second = self.make_file('sub/b.heic')

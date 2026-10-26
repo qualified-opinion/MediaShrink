@@ -17,6 +17,8 @@ MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | PHOTO_EXTENSIONS
 class MediaFile:
     path: Path
     size: int
+    # Output subfolder mirroring the source layout, e.g. "DCIM/100APPLE"; empty for single files.
+    folder: Path = Path()
 
 
 @dataclass
@@ -63,7 +65,7 @@ def scan_media(
     visited: set[Path] = set()
     batch: list[MediaFile] = []
 
-    def add_file(path: Path, info: os.stat_result) -> None:
+    def add_file(path: Path, info: os.stat_result, subfolder: Path = Path()) -> None:
         if path.suffix.lower() not in MEDIA_EXTENSIONS:
             report.unsupported += 1
         elif destination is not None and destination_conflict(destination, (), (path,)):
@@ -72,7 +74,7 @@ def scan_media(
             report.duplicates += 1
         else:
             seen.add(path)
-            batch.append(MediaFile(path, info.st_size))
+            batch.append(MediaFile(path, info.st_size, subfolder))
             report.added += 1
             if len(batch) >= 128:
                 emit_batch(batch.copy())
@@ -115,7 +117,8 @@ def scan_media(
                                 elif entry.is_dir(follow_symlinks=False):
                                     stack.append(Path(entry.path))
                                 elif entry.is_file(follow_symlinks=False):
-                                    add_file(Path(entry.path), entry.stat(follow_symlinks=False))
+                                    add_file(Path(entry.path), entry.stat(follow_symlinks=False),
+                                             Path(root.name) / folder.relative_to(root))
                                 else:
                                     report.unsupported += 1
                             except OSError as exc:

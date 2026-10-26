@@ -1,4 +1,4 @@
-"""Native desktop import queue. Encoding is added in the next milestone."""
+"""Native desktop window: import queue, batch compression and results."""
 
 from pathlib import Path
 import sys
@@ -16,6 +16,7 @@ from mediashrink.video import compress, Cancelled, choose_encoder
 from mediashrink.presets import PRESETS, ENCODERS
 from mediashrink.photo import compress as compress_photo
 from mediashrink.importing import VIDEO_EXTENSIONS
+from mediashrink.report import ResultsLog
 
 
 class ImportThread(QThread):
@@ -46,6 +47,7 @@ class MediaThread(QThread):
     encoder_status = Signal(str)
     batch_status = Signal(object)
     overall_progress = Signal(int)
+    log_status = Signal(str)
 
     def __init__(self, files, destination, roots, parent=None, preset="Balanced", encoder="libx264"):
         self.preset, self.encoder = preset, encoder
@@ -57,42 +59,65 @@ class MediaThread(QThread):
         totals = dict(total=len(self.files), completed=0, saved=0, skipped=0, failed=0,
                       cancelled=0, original_bytes=0, output_bytes=0)
         self.batch_status.emit(totals.copy())
-        selected = self.encoder
-        if any(item.path.suffix.lower() in VIDEO_EXTENSIONS for item in self.files):
-            try:
-                selected = choose_encoder(selected, self.preset, self.cancel, self.encoder_status.emit)
-            except Cancelled:
+        try:
+            log = ResultsLog(self.destination)
+            self.log_status.emit(f"Results log: {log.path}")
+        except (OSError, RuntimeError) as exc:
+            log = None
+            self.log_status.emit(f"Results log could not be created: {exc}")
+        logged = 0
+        try:
+            selected = self.encoder
+            if any(item.path.suffix.lower() in VIDEO_EXTENSIONS for item in self.files):
+                try:
+                    selected = choose_encoder(selected, self.preset, self.cancel, self.encoder_status.emit)
+                except Cancelled:
+                    self.batch_status.emit(totals.copy())
+                    return
+            for row, item in enumerate(self.files):
+                if self.cancel.is_set():
+                    break
+                logged = row + 1
+                engine = compress if item.path.suffix.lower() in VIDEO_EXTENSIONS else compress_photo
+                options = {"preset": self.preset, "folder": item.folder}
+                if engine is compress:
+                    options["encoder"] = selected
+                source_size = None
+                try:
+                    self.update.emit(row, "Checking media", "—")
+                    source_size = item.path.stat().st_size
+                    target, size = engine(item.path, self.destination, self.roots, self.cancel,
+                        lambda percent, row=row: self.report_progress(row, percent), **options)
+                    totals['completed'] += 1
+                    totals['saved' if target else 'skipped'] += 1
+                    if target:
+                        totals['original_bytes'] += source_size
+                        totals['output_bytes'] += size
+                    self.update.emit(row, f"Saved: {target}" if target else "Skipped: no size reduction", format_size(size) if target else "—")
+                    if log is not None:
+                        log.add(item.path, "Saved" if target else "No reduction", original=source_size, target=target, size=size)
+                except Cancelled:
+                    totals["cancelled"] += 1
+                    self.update.emit(row, "Cancelled", "—")
+                    self.batch_status.emit(totals.copy())
+                    if log is not None:
+                        log.add(item.path, "Cancelled", original=source_size)
+                    break
+                except Exception as exc:
+                    totals['completed'] += 1
+                    totals['failed'] += 1
+                    self.update.emit(row, str(exc), "—")
+                    if log is not None:
+                        log.add(item.path, "Skipped" if str(exc).startswith("Skipped") else "Failed", str(exc), source_size)
+                self.overall_progress.emit(int(totals['completed'] / max(1, totals['total']) * 100))
                 self.batch_status.emit(totals.copy())
-                return
-        for row, item in enumerate(self.files):
-            if self.cancel.is_set():
-                break
-            engine = compress if item.path.suffix.lower() in VIDEO_EXTENSIONS else compress_photo
-            options = {"preset": self.preset}
-            if engine is compress:
-                options["encoder"] = selected
-            try:
-                self.update.emit(row, "Checking media", "—")
-                source_size = item.path.stat().st_size
-                target, size = engine(item.path, self.destination, self.roots, self.cancel,
-                    lambda percent, row=row: self.report_progress(row, percent), **options)
-                totals['completed'] += 1
-                totals['saved' if target else 'skipped'] += 1
-                if target:
-                    totals['original_bytes'] += source_size
-                    totals['output_bytes'] += size
-                self.update.emit(row, f"Saved: {target}" if target else "Skipped: no size reduction", format_size(size) if target else "—")
-            except Cancelled:
-                totals["cancelled"] += 1
-                self.update.emit(row, "Cancelled", "—")
-                self.batch_status.emit(totals.copy())
-                break
-            except Exception as exc:
-                totals['completed'] += 1
-                totals['failed'] += 1
-                self.update.emit(row, str(exc), "—")
-            self.overall_progress.emit(int(totals['completed'] / max(1, totals['total']) * 100))
-            self.batch_status.emit(totals.copy())
+        finally:
+            if log is not None:
+                for item in self.files[logged:]:
+                    log.add(item.path, "Not processed", original=item.size)
+                log.close()
+                if log.error is not None:
+                    self.log_status.emit(f"Results log incomplete ({log.error}): {log.path}")
 
     def report_progress(self, row, percent):
         self.update.emit(row, f"Compressing {percent}%", "—")
@@ -333,6 +358,8 @@ class MainWindow(QMainWindow):
         self.worker = MediaThread(list(self.queue.files), self.destination, set(self.source_folders), self, self.quality.currentText(), ENCODERS[self.encoder.currentText()])
         self.encoder_note.setText("Photos use CPU; video encoder: " + self.encoder.currentText())
         self.worker.encoder_status.connect(self.encoder_note.setText)
+        self.details.clear()
+        self.worker.log_status.connect(self.details.setText)
         self.queue.results.clear()
         if self.queue.rowCount():
             self.queue.dataChanged.emit(self.queue.index(0, 0), self.queue.index(self.queue.rowCount()-1, 3))

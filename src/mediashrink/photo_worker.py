@@ -4,6 +4,20 @@ import sys
 from mediashrink.presets import PRESETS
 
 
+def webp_is_lossy(path):
+    """Read the RIFF chunk list: 'VP8 ' holds lossy image data, 'VP8L' lossless."""
+    with open(path, 'rb') as file:
+        header = file.read(12)
+        if header[:4] != b'RIFF' or header[8:] != b'WEBP':
+            return False
+        while len(chunk := file.read(8)) == 8:
+            if chunk[:4] in (b'VP8 ', b'VP8L'):
+                return chunk[:4] == b'VP8 '
+            size = int.from_bytes(chunk[4:], 'little')
+            file.seek(size + (size & 1), 1)
+    return False
+
+
 def encode(source, output, preset='Balanced'):
     try:
         import pyvips
@@ -17,6 +31,12 @@ def encode(source, output, preset='Balanced'):
         raise ValueError('Skipped: HDR, high bit depth or unsupported colour space')
     if image.width * image.height > 100_000_000:
         raise ValueError('Skipped: photo exceeds 100 megapixels')
+    if output.endswith('.heic'):
+        try:
+            pyvips.Image.black(16, 16, bands=3).heifsave_buffer(compression='hevc')
+        except pyvips.Error:
+            raise ValueError('Skipped: HEIC output needs the libheif HEVC (x265) encoder plugin') from None
+    lossless = output.endswith('.webp') and not webp_is_lossy(source)
     image = image.autorot()
     if image.interpretation == 'b-w' and not output.endswith('.jpg'):
         image = image.colourspace('srgb')
@@ -25,11 +45,16 @@ def encode(source, output, preset='Balanced'):
         if image.hasalpha():
             raise ValueError('Skipped: JPEG output cannot preserve transparency')
         image.jpegsave(output, Q=PRESETS[preset].jpeg, optimize_coding=True)
-    else:
+    elif output.endswith('.heic'):
+        image.heifsave(output, Q=PRESETS[preset].heic, compression='hevc')
+    elif lossless:
         options = {'Q': 85, 'lossless': True}
         if 'exact' in pyvips.Introspect.get('webpsave').optional_input:
             options['exact'] = True
         image.webpsave(output, **options)
+    else:
+        # Lossy WebP re-saved losslessly would always grow, so it stays lossy.
+        image.webpsave(output, Q=PRESETS[preset].webp)
     result = pyvips.Image.new_from_file(output, fail_on='warning')
     result.avg()  # Force full decoding before the parent can publish anything.
     if (image.width, image.height, image.bands) != (result.width, result.height, result.bands):
@@ -39,7 +64,7 @@ def encode(source, output, preset='Balanced'):
     for field in ('icc-profile-data', 'xmp-data', 'exif-ifd2-DateTimeOriginal'):
         if image.get_typeof(field) and (not result.get_typeof(field) or image.get(field) != result.get(field)):
             raise RuntimeError(f'Photo validation failed: {field} was not preserved')
-    if output.endswith('.webp') and (image - result).abs().max() != 0:
+    if lossless and (image - result).abs().max() != 0:
         raise RuntimeError('Lossless photo validation failed')
     return {'width': result.width, 'height': result.height}
 

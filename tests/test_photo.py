@@ -5,8 +5,22 @@ from threading import Event
 import unittest
 import pyvips
 from mediashrink.photo import compress
-from mediashrink.photo_worker import encode
+from mediashrink.photo_worker import encode, webp_is_lossy
 from mediashrink.video import Cancelled
+
+
+def photo_like(width=400, height=300):
+    """Smooth noise compresses like a photo, unlike flat synthetic colours."""
+    base = pyvips.Image.gaussnoise(width // 4, height // 4, mean=128, sigma=40).gaussblur(2).resize(4)
+    return base.bandjoin([base.flip('horizontal'), base.flip('vertical')]).cast('uchar').copy(interpretation='srgb')
+
+
+def heic_encoder_available():
+    try:
+        pyvips.Image.black(16, 16, bands=3).heifsave_buffer(compression='hevc')
+        return True
+    except pyvips.Error:
+        return False
 
 
 class PhotoTest(unittest.TestCase):
@@ -75,6 +89,31 @@ class PhotoTest(unittest.TestCase):
         self.assertEqual(list(self.output.iterdir()), [])
         with self.assertRaises(ValueError):
             compress(source, self.root, (), Event(), lambda _: None)
+
+    def test_lossy_webp_stays_lossy_in_mirrored_folder(self):
+        source = self.root / 'web.webp'
+        photo_like().webpsave(str(source), Q=95)
+        self.assertTrue(webp_is_lossy(source))
+        target, size = compress(source, self.output, (), Event(), lambda _: None, folder=Path('Trip/Day 1'))
+        self.assertEqual(target, self.output / 'Trip' / 'Day 1' / 'web-compressed.webp')
+        self.assertTrue(webp_is_lossy(target))
+        self.assertLess(size, source.stat().st_size)
+        lossless = self.root / 'lossless.webp'
+        photo_like().webpsave(str(lossless), lossless=True)
+        self.assertFalse(webp_is_lossy(lossless))
+
+    @unittest.skipUnless(heic_encoder_available(), 'libheif has no HEVC encoder')
+    def test_heic_stays_heic_with_capture_date(self):
+        source = self.root / 'IMG_0001.HEIC'
+        image = photo_like().copy()
+        image.set_type(pyvips.GValue.gstr_type, 'exif-ifd2-DateTimeOriginal', '2020:01:02 03:04:05')
+        image.heifsave(str(source), Q=80, compression='hevc')
+        target, size = compress(source, self.output, (), Event(), lambda _: None)
+        self.assertEqual(target.name, 'IMG_0001-compressed.heic')
+        self.assertLess(size, source.stat().st_size)
+        result = pyvips.Image.new_from_file(str(target))
+        self.assertEqual((result.width, result.height), (400, 300))
+        self.assertIn('2020:01:02', result.get('exif-ifd2-DateTimeOriginal'))
 
     def test_high_bit_depth_rejected(self):
         source = self.root / 'deep.png'
