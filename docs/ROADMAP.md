@@ -3,7 +3,7 @@
 Target: Omarchy / Arch Linux, including an RTX 3050 laptop. All processing offline.
 Each milestone is a separate branch and PR; GitHub assigns actual PR numbers.
 
-Progress: milestones 1–4 merged; milestone 5 implemented in the GPU/presets PR. Milestone 6 remains.
+Progress: milestones 1–5 merged. Milestone 6 implementation is in the release-readiness PR; native acceptance and packaged release remain open (see RELEASE.md).
 
 1. **Project shell** — Python package, native PySide6 window, headless startup CI, documentation.
 2. **Batch selection** — file/folder import, recursive scan outside the UI thread, supported-format filtering, duplicate path prevention, destination selection. Never write media during import.

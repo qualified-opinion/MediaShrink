@@ -7,7 +7,7 @@ An offline Linux desktop app for batch photo and video compression, targeting Om
 ## Prepare a batch
 
 1. Choose **Add files** or **Add folder** (includes subfolders).
-2. Review the queue and total original size. Candidate extensions: MP4, MOV, MKV, JPEG/JPG, PNG, WebP and HEIC, regardless of letter case. The later encoding engines will validate actual formats and codec support.
+2. Review the queue and total original size. Candidate extensions: MP4, MOV, MKV, JPEG/JPG, PNG, WebP and HEIC, regardless of letter case. The encoding engines validate actual formats and codec support.
 3. Choose an existing output folder separate from imported folder trees. For individual files, their containing folder and its ancestors cannot be the output folder. Overlap is checked whether you select the destination before or after importing.
 
 Import skips symlink files/folders, unsupported extensions, and duplicate absolute paths. It reports inaccessible or missing paths and continues. This is path deduplication, not content duplicate detection. The queue exists only for the current session.
@@ -76,3 +76,9 @@ Select High Quality, Balanced (default), or Small Size before starting. CPU vide
 Video encoder choices: CPU H.264, NVIDIA H.264, NVIDIA HEVC. Photos always use CPU. NVIDIA selection performs a cancellable 15-second-limited real encode probe once per batch. If the probe fails, the visible encoder note explains the CPU H.264 fallback (including when HEVC was selected). A later per-file failure is reported without automatic retry. HEVC playback compatibility depends on your player. No AV1 option is offered.
 
 The probe and all processing run off the UI thread; controls are locked for the batch. GPU encoding still uses CPU decoding and validation. CI tests fallback with simulated failures and real CPU encoding; real NVENC, driver compatibility, quality and performance must be checked on the target laptop.
+
+## Batch results and release status
+
+Overall progress weights each queued file equally, so it is not a time estimate. The final summary shows saved outputs, no-reduction results, failed/unsupported files, cancellations and files not processed. Reduction percentages use only successfully saved files. Originals remain on disk, so these figures do not represent space already freed. Full error/output paths are available in table tooltips.
+
+Before each file, the destination needs twice the source size plus 64 MiB free and working write/hard-link support. Space can still run out during work. See [release readiness](docs/RELEASE.md) for interruption behavior, native acceptance checks and the AppImage assessment. CI provides Python package artifacts; no self-contained app or public release is published yet.

@@ -1,3 +1,4 @@
+from mediashrink.storage import check_destination
 """Photo encoding orchestration; originals are never modified."""
 import os
 from pathlib import Path
@@ -21,6 +22,7 @@ def compress(source, destination, roots, cancel, progress, preset='Balanced'):
     if not source.is_file() or not destination.is_dir() or destination_conflict(destination, roots, (source,)):
         raise ValueError('Output folder overlaps source or source is unavailable')
     before = source.stat()
+    check_destination(destination, before.st_size)
     extension = '.jpg' if source.suffix.lower() in ('.jpg', '.jpeg', '.heic') else '.webp'
     progress(0)
     with tempfile.TemporaryDirectory(prefix='.mediashrink-', dir=destination) as temporary:

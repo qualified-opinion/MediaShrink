@@ -26,3 +26,9 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Build source and wheel distributions
         run: python -m build
+      - name: Upload Python packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: mediashrink-python-${{ matrix.python-version }}
+          path: dist/*
+          if-no-files-found: error

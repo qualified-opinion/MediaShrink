@@ -1,3 +1,4 @@
+from mediashrink.storage import check_destination
 """CPU encoding with cancellable subprocesses and no-clobber publication."""
 import json
 import math
@@ -116,6 +117,7 @@ def compress(source, destination, roots, cancel, progress, preset='Balanced', en
     if not destination.is_dir() or destination_conflict(destination, roots, (source,)):
         raise ValueError('Output folder overlaps source')
     before = source.stat()
+    check_destination(destination, before.st_size)
     duration, width, height, audio = inspect(probe(source, cancel))
     # Private directory on the destination filesystem permits atomic hard-link publication.
     with tempfile.TemporaryDirectory(prefix='.mediashrink-', dir=destination) as temporary:
