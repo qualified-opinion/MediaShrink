@@ -9,6 +9,7 @@ import tempfile
 import time
 
 from mediashrink.importing import destination_conflict
+from mediashrink.presets import video_options
 
 
 class Cancelled(Exception):
@@ -88,7 +89,25 @@ def inspect(data):
     return duration, width, height, len(audio)
 
 
-def compress(source, destination, roots, cancel, progress):
+def choose_encoder(requested, preset, cancel, notify):
+    if requested == 'libx264':
+        return requested
+    options = video_options(requested, preset)
+    notify('Testing NVIDIA encoder…')
+    try:
+        run(['ffmpeg', '-nostdin', '-v', 'error', '-f', 'lavfi', '-i',
+             'color=size=128x128:rate=24', '-frames:v', '3', *options,
+             '-pix_fmt', 'yuv420p', '-f', 'null', '-'], cancel, timeout=15)
+        notify(f'Using {requested}')
+        return requested
+    except Cancelled:
+        raise
+    except (RuntimeError, OSError) as exc:
+        notify(f'NVIDIA unavailable; using CPU H.264. {str(exc)[-300:]}')
+        return 'libx264'
+
+
+def compress(source, destination, roots, cancel, progress, preset='Balanced', encoder='libx264'):
     source = Path(source)
     if source.is_symlink():
         raise ValueError('Source changed to a symlink')
@@ -102,8 +121,7 @@ def compress(source, destination, roots, cancel, progress):
     with tempfile.TemporaryDirectory(prefix='.mediashrink-', dir=destination) as temporary:
         output = Path(temporary) / 'encoded.mp4'
         run(['ffmpeg', '-nostdin', '-v', 'error', '-n', '-noautorotate', '-i', str(source),
-             '-map', '0:v:0', '-map', '0:a:0?', '-map_metadata', '0', '-c:v', 'libx264',
-             '-preset', 'medium', '-crf', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
+             '-map', '0:v:0', '-map', '0:a:0?', '-map_metadata', '0', *video_options(encoder, preset), '-pix_fmt', 'yuv420p', '-c:a', 'aac',
              '-b:a', '192k', '-movflags', '+faststart', '-progress', 'pipe:1', str(output)],
             cancel, lambda seconds: progress(min(95, int(seconds / duration * 95))))
         result = inspect(probe(output, cancel))

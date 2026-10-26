@@ -8,7 +8,7 @@ from mediashrink.importing import PHOTO_EXTENSIONS, destination_conflict
 from mediashrink.video import Cancelled, run
 
 
-def compress(source, destination, roots, cancel, progress):
+def compress(source, destination, roots, cancel, progress, preset='Balanced'):
     source = Path(source)
     if cancel.is_set():
         raise Cancelled('Cancelled')
@@ -25,7 +25,7 @@ def compress(source, destination, roots, cancel, progress):
     progress(0)
     with tempfile.TemporaryDirectory(prefix='.mediashrink-', dir=destination) as temporary:
         output = Path(temporary) / f'encoded{extension}'
-        run([sys.executable, '-m', 'mediashrink.photo_worker', str(source), str(output)], cancel)
+        run([sys.executable, '-m', 'mediashrink.photo_worker', str(source), str(output), preset], cancel)
         progress(95)
         after = source.stat()
         if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):

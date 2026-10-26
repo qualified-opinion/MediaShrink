@@ -6,13 +6,14 @@ from threading import Event
 
 from PySide6.QtCore import QThread, Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QHeaderView, QHBoxLayout, QLabel, QMainWindow,
+    QApplication, QComboBox, QFileDialog, QHeaderView, QHBoxLayout, QLabel, QMainWindow,
     QMessageBox, QProgressBar, QPushButton, QTableView, QVBoxLayout, QWidget,
 )
 
 from mediashrink.importing import MEDIA_EXTENSIONS, ScanReport, destination_conflict, scan_media
 from mediashrink.queue_model import QueueModel, format_size
-from mediashrink.video import compress, Cancelled
+from mediashrink.video import compress, Cancelled, choose_encoder
+from mediashrink.presets import PRESETS, ENCODERS
 from mediashrink.photo import compress as compress_photo
 from mediashrink.importing import VIDEO_EXTENSIONS
 
@@ -42,21 +43,32 @@ class ImportThread(QThread):
 
 class MediaThread(QThread):
     update = Signal(int, str, str)
+    encoder_status = Signal(str)
 
-    def __init__(self, files, destination, roots, parent=None):
+    def __init__(self, files, destination, roots, parent=None, preset="Balanced", encoder="libx264"):
+        self.preset, self.encoder = preset, encoder
         super().__init__(parent)
         self.files, self.destination, self.roots = files, destination, roots
         self.cancel = Event()
 
     def run(self):
+        selected = self.encoder
+        if any(item.path.suffix.lower() in VIDEO_EXTENSIONS for item in self.files):
+            try:
+                selected = choose_encoder(selected, self.preset, self.cancel, self.encoder_status.emit)
+            except Cancelled:
+                return
         for row, item in enumerate(self.files):
             if self.cancel.is_set():
                 break
             engine = compress if item.path.suffix.lower() in VIDEO_EXTENSIONS else compress_photo
+            options = {"preset": self.preset}
+            if engine is compress:
+                options["encoder"] = selected
             try:
                 self.update.emit(row, "Checking media", "—")
                 target, size = engine(item.path, self.destination, self.roots, self.cancel,
-                    lambda percent, row=row: self.update.emit(row, f"Compressing {percent}%", "—"))
+                    lambda percent, row=row: self.update.emit(row, f"Compressing {percent}%", "—"), **options)
                 self.update.emit(row, f"Saved: {target}" if target else "Skipped: no size reduction", format_size(size) if target else "—")
             except Cancelled:
                 self.update.emit(row, "Cancelled", "—")
@@ -96,6 +108,21 @@ class MainWindow(QMainWindow):
         notice.setWordWrap(True)
         layout.addWidget(notice)
 
+        settings = QHBoxLayout()
+        self.quality = QComboBox()
+        self.quality.addItems(list(PRESETS))
+        self.quality.setCurrentText('Balanced')
+        self.encoder = QComboBox()
+        self.encoder.addItems(list(ENCODERS))
+        settings.addWidget(QLabel('Quality'))
+        settings.addWidget(self.quality)
+        settings.addWidget(QLabel('Video encoder'))
+        settings.addWidget(self.encoder)
+        layout.addLayout(settings)
+        self.encoder_note = QLabel('Photos use CPU. PNG/WebP remain lossless for every preset.')
+        self.encoder_note.setWordWrap(True)
+        self.encoder_note.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self.encoder_note)
         actions = QHBoxLayout()
         self.add_files_button = QPushButton("Add files")
         self.add_files_button.clicked.connect(self.choose_files)
@@ -141,7 +168,7 @@ class MainWindow(QMainWindow):
         self.details.setWordWrap(True)
         self.details.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.details)
-        self.start_button = QPushButton("Compress photos and videos (CPU)")
+        self.start_button = QPushButton("Compress photos and videos")
         self.start_button.setEnabled(False)
         self.start_button.clicked.connect(self.start_compression)
         layout.addWidget(self.start_button)
@@ -184,6 +211,8 @@ class MainWindow(QMainWindow):
     def set_importing(self, busy: bool):
         for button in (self.add_files_button, self.add_folder_button, self.clear_button, self.destination_button):
             button.setEnabled(not busy)
+        self.quality.setEnabled(not busy)
+        self.encoder.setEnabled(not busy)
         self.cancel_button.setEnabled(busy)
         if not busy:
             self.cancel_button.setText("Cancel import")
@@ -266,14 +295,16 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Output folder unavailable", self.details.text())
 
     def refresh_start(self):
-        self.start_button.setText("Compress photos and videos (CPU)")
+        self.start_button.setText("Compress photos and videos")
         self.start_button.setEnabled(self.worker is None and self.destination is not None and bool(self.queue.files))
 
     @Slot()
     def start_compression(self):
         if self.worker is not None or self.destination is None:
             return
-        self.worker = MediaThread(list(self.queue.files), self.destination, set(self.source_folders), self)
+        self.worker = MediaThread(list(self.queue.files), self.destination, set(self.source_folders), self, self.quality.currentText(), ENCODERS[self.encoder.currentText()])
+        self.encoder_note.setText("Photos use CPU; video encoder: " + self.encoder.currentText())
+        self.worker.encoder_status.connect(self.encoder_note.setText)
         self.worker.update.connect(self.video_update)
         self.worker.finished.connect(self.import_finished)
         self.set_importing(True)

@@ -1,9 +1,10 @@
 """Isolated libvips work so cancellation can terminate image decoding/encoding."""
 import json
 import sys
+from mediashrink.presets import PRESETS
 
 
-def encode(source, output):
+def encode(source, output, preset='Balanced'):
     try:
         import pyvips
     except (ImportError, OSError) as exc:
@@ -23,7 +24,7 @@ def encode(source, output):
     if output.endswith('.jpg'):
         if image.hasalpha():
             raise ValueError('Skipped: JPEG output cannot preserve transparency')
-        image.jpegsave(output, Q=85, optimize_coding=True)
+        image.jpegsave(output, Q=PRESETS[preset].jpeg, optimize_coding=True)
     else:
         options = {'Q': 85, 'lossless': True}
         if 'exact' in pyvips.Introspect.get('webpsave').optional_input:
@@ -45,7 +46,7 @@ def encode(source, output):
 
 if __name__ == '__main__':
     try:
-        print(json.dumps(encode(sys.argv[1], sys.argv[2])))
+        print(json.dumps(encode(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else 'Balanced')))
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1)
