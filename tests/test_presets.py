@@ -27,3 +27,12 @@ class EncoderTest(unittest.TestCase):
             run.assert_not_called()
         with self.assertRaises(ValueError):
             video_options('av1_nvenc', 'Balanced')
+
+    def test_hevc_is_apple_compatible_and_hdr_uses_main10(self):
+        self.assertIn('hvc1', video_options('hevc_nvenc', 'Balanced'))
+        self.assertNotIn('hvc1', video_options('h264_nvenc', 'Balanced'))
+        for encoder, codec in (('libx264', 'libx265'), ('h264_nvenc', 'libx265'), ('hevc_nvenc', 'hevc_nvenc')):
+            options = video_options(encoder, 'Balanced', hdr=True)
+            self.assertEqual(options[options.index('-c:v') + 1], codec)
+            self.assertIn('main10', options)
+            self.assertIn('arib-std-b67', options)

@@ -2,7 +2,7 @@
 
 An offline Linux desktop app for batch photo and video compression, targeting Omarchy (Arch Linux) and optional NVIDIA acceleration.
 
-**Current status: CPU photo and video compression.** Add files or recursively scan folders, see original sizes, cancel import, clear the queue, and choose a separate output folder. CPU video compression is available through **Compress photos and videos**. Install FFmpeg (`sudo pacman -Syu --needed ffmpeg`). Default output is CPU H.264/AAC MP4 using Balanced quality; Optional NVIDIA H.264/HEVC encoding is available. HDR, rotation metadata and extra streams are explicitly skipped. Outputs are fully decoded for validation and only kept if smaller. Existing outputs get a numbered filename; originals are retained. Import reads file information without opening media contents or modifying originals.
+**Current status: CPU photo and video compression.** Add files or recursively scan folders, see original sizes, cancel import, clear the queue, and choose a separate output folder. CPU video compression is available through **Compress photos and videos**. Install FFmpeg (`sudo pacman -Syu --needed ffmpeg`). Default output is CPU H.264/AAC MP4 using Balanced quality; Optional NVIDIA H.264/HEVC encoding is available. Portrait (rotated) phone videos are supported, and HLG HDR video (the iPhone default) is kept as 10-bit HDR HEVC. Timecode and camera metadata tracks are dropped; HDR10/PQ, mirrored video, subtitles and extra audio/video streams are explicitly skipped. Outputs are fully decoded for validation and only kept if smaller. Outputs mirror the imported folder structure, existing outputs get a numbered filename, every batch writes a CSV results log, and originals are retained. Import reads file information without opening media contents or modifying originals.
 
 ## Prepare a batch
 
@@ -19,7 +19,7 @@ Import skips symlink files/folders, unsupported extensions, and duplicate absolu
 Use the distribution's Qt bindings, avoiding a separate Qt installation:
 
 ```bash
-sudo pacman -Syu --needed python python-pip pyside6 git libvips python-pyvips ffmpeg
+sudo pacman -Syu --needed python python-pip pyside6 git libvips libheif python-pyvips ffmpeg
 git clone https://github.com/qualified-opinion/MediaShrink.git
 cd MediaShrink
 python -m venv --system-site-packages .venv
@@ -65,15 +65,15 @@ FFmpeg and FFprobe are required for video compression; importing alone does not 
 
 Install libvips and pyvips (included in the Arch command above); in an isolated environment use `python -m pip install '.[photos]'` plus your distribution's libvips runtime. Missing loaders or encoders are reported per file; HEIC support depends on the installed libheif/libvips build. Video compression remains usable without pyvips.
 
-JPEG and supported HEIC inputs produce JPEG at quality 85. PNG and WebP produce lossless WebP with exact alpha pixels; dimensions are retained. EXIF orientation is applied to pixels and normalised. Supported EXIF/XMP/ICC metadata is retained by libvips, including location information when present; original modification time is retained. This is not a metadata scrubber. Validation checks full decoding, dimensions/channels, orientation, ICC/XMP and the original capture-date field when present; lossless WebP also gets a pixel comparison. It does not guarantee preservation of every vendor metadata tag.
+JPEG inputs produce JPEG at quality 85. HEIC inputs produce HEIC (HEVC) at libheif quality 50, because a JPEG copy of a HEIC photo is almost always larger; this needs libheif's x265 encoder plugin, and HEIC files are reported as skipped without it. PNG and lossless WebP produce lossless WebP with exact alpha pixels; lossy WebP stays lossy WebP at quality 80. Dimensions are retained. HEIC auxiliary images (depth maps, HDR gain maps) are not carried over. EXIF orientation is applied to pixels and normalised. Supported EXIF/XMP/ICC metadata is retained by libvips, including location information when present; original modification time is retained. This is not a metadata scrubber. Validation checks full decoding, dimensions/channels, orientation, ICC/XMP and the original capture-date field when present; lossless WebP also gets a pixel comparison. It does not guarantee preservation of every vendor metadata tag.
 
-Animated/multi-image inputs, unsupported colour spaces, high-bit-depth/HDR images and photos over 100 megapixels are skipped. Larger results are discarded. Photos use stage progress (0%, validation, complete), with cancellation terminating the isolated worker. Existing output names receive numeric suffixes. As with video, publication currently requires a filesystem with hard-link support. Test representative phone photos before using a large batch.
+Animated/multi-image inputs, unsupported colour spaces, high-bit-depth/HDR images and photos over 100 megapixels are skipped. Larger results are discarded. Photos use stage progress (0%, validation, complete), with cancellation terminating the isolated worker. Existing output names receive numeric suffixes. Test representative phone photos before using a large batch.
 
 ## Quality and NVIDIA encoding
 
-Select High Quality, Balanced (default), or Small Size before starting. CPU video CRF values are 18/23/28; NVIDIA CQ values are 19/23/28; JPEG qualities are 92/85/75. These are starting settings, not equivalent quality across encoders or guaranteed savings. PNG/WebP stays lossless in every preset. Resolution is unchanged.
+Select High Quality, Balanced (default), or Small Size before starting. CPU video CRF values are 18/23/28 (H.264) and 22/26/30 (HEVC for HDR); NVIDIA CQ values are 19/23/28; JPEG qualities are 92/85/75; HEIC qualities are 60/50/40; lossy WebP qualities are 90/80/70. These are starting settings, not equivalent quality across encoders or guaranteed savings. PNG and lossless WebP stay lossless in every preset. Resolution is unchanged.
 
-Video encoder choices: CPU H.264, NVIDIA H.264, NVIDIA HEVC. Photos always use CPU. NVIDIA selection performs a cancellable 15-second-limited real encode probe once per batch. If the probe fails, the visible encoder note explains the CPU H.264 fallback (including when HEVC was selected). A later per-file failure is reported without automatic retry. HEVC playback compatibility depends on your player. No AV1 option is offered.
+Video encoder choices: CPU H.264, NVIDIA H.264, NVIDIA HEVC. Photos always use CPU. NVIDIA selection performs a cancellable 15-second-limited real encode probe once per batch. If the probe fails, the visible encoder note explains the CPU H.264 fallback (including when HEVC was selected). A later per-file failure is reported without automatic retry. HEVC outputs use the `hvc1` tag that Apple players require; playback still depends on your player. HLG HDR videos always use HEVC Main10 (NVIDIA HEVC when selected, otherwise CPU x265, which is slower), because H.264 cannot keep 10-bit HDR. For iPhone Dolby Vision videos, the HLG base picture is kept and the Dolby Vision layer is dropped. No AV1 option is offered.
 
 The probe and all processing run off the UI thread; controls are locked for the batch. GPU encoding still uses CPU decoding and validation. CI tests fallback with simulated failures and real CPU encoding; real NVENC, driver compatibility, quality and performance must be checked on the target laptop.
 
@@ -81,4 +81,10 @@ The probe and all processing run off the UI thread; controls are locked for the 
 
 Overall progress weights each queued file equally, so it is not a time estimate. The final summary shows saved outputs, no-reduction results, failed/unsupported files, cancellations and files not processed. Reduction percentages use only successfully saved files. Originals remain on disk, so these figures do not represent space already freed. Full error/output paths are available in table tooltips.
 
-Before each file, the destination needs twice the source size plus 64 MiB free and working write/hard-link support. Space can still run out during work. See [release readiness](docs/RELEASE.md) for interruption behavior, native acceptance checks and the AppImage assessment. CI provides Python package artifacts; no self-contained app or public release is published yet.
+Before each file, the destination needs twice the source size plus 64 MiB free and must be writable. Space can still run out during work. exFAT/FAT32 drives and other destinations without hard links are supported: the output name is claimed exclusively and the finished file is renamed onto it, so an existing file is never replaced.
+
+## Output folder layout and results log
+
+Files from an added folder keep their layout under a folder with the same name, for example `Output/Phone/DCIM/100APPLE/IMG_0001-compressed.jpg`; individually added files go directly in the output folder. Imported folders with the same name share an output folder, and clashing names get numeric suffixes.
+
+Each batch writes `mediashrink-results-<date>-<time>.csv` to the output folder (UTF-8, opens in spreadsheet apps). It lists every queued original with its output file, sizes, saving and result (Saved, No reduction, Skipped, Failed, Cancelled or Not processed). Use it to check which output belongs to which original before you remove any original yourself. See [release readiness](docs/RELEASE.md) for interruption behavior, native acceptance checks and the AppImage assessment. CI provides Python package artifacts; no self-contained app or public release is published yet.

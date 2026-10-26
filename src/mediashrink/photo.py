@@ -1,4 +1,3 @@
-from mediashrink.storage import check_destination
 """Photo encoding orchestration; originals are never modified."""
 import os
 from pathlib import Path
@@ -6,10 +5,14 @@ import sys
 import tempfile
 
 from mediashrink.importing import PHOTO_EXTENSIONS, destination_conflict
-from mediashrink.video import Cancelled, run
+from mediashrink.storage import Cancelled, check_destination, output_folder, publish
+from mediashrink.video import run
+
+# HEIC stays HEIC: it is already more compact than JPEG, so a JPEG copy is almost never smaller.
+OUTPUT_EXTENSIONS = {'.jpg': '.jpg', '.jpeg': '.jpg', '.heic': '.heic', '.png': '.webp', '.webp': '.webp'}
 
 
-def compress(source, destination, roots, cancel, progress, preset='Balanced'):
+def compress(source, destination, roots, cancel, progress, preset='Balanced', folder=Path()):
     source = Path(source)
     if cancel.is_set():
         raise Cancelled('Cancelled')
@@ -23,7 +26,7 @@ def compress(source, destination, roots, cancel, progress, preset='Balanced'):
         raise ValueError('Output folder overlaps source or source is unavailable')
     before = source.stat()
     check_destination(destination, before.st_size)
-    extension = '.jpg' if source.suffix.lower() in ('.jpg', '.jpeg', '.heic') else '.webp'
+    extension = OUTPUT_EXTENSIONS[source.suffix.lower()]
     progress(0)
     with tempfile.TemporaryDirectory(prefix='.mediashrink-', dir=destination) as temporary:
         output = Path(temporary) / f'encoded{extension}'
@@ -38,15 +41,6 @@ def compress(source, destination, roots, cancel, progress, preset='Balanced'):
         if size >= before.st_size:
             return None, 0
         os.utime(output, ns=(before.st_atime_ns, before.st_mtime_ns))
-        for number in range(10000):
-            if cancel.is_set():
-                raise Cancelled('Cancelled')
-            suffix = '' if number == 0 else f'-{number}'
-            target = destination / f'{source.stem[:120]}-compressed{suffix}{extension}'
-            try:
-                os.link(output, target)
-            except FileExistsError:
-                continue
-            progress(100)
-            return target, size
-        raise RuntimeError('Too many output filename collisions')
+        target = publish(output, output_folder(destination, folder), source.stem, extension, cancel)
+        progress(100)
+        return target, size
