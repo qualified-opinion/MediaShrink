@@ -2,7 +2,7 @@
 
 An offline Linux desktop app for batch photo and video compression, targeting Omarchy (Arch Linux) and optional NVIDIA acceleration.
 
-**Current status: CPU photo and video compression.** Add files or recursively scan folders, see original sizes, cancel import, clear the queue, and choose a separate output folder. CPU video compression is available through **Compress photos and videos (CPU)**. Install FFmpeg (`sudo pacman -Syu --needed ffmpeg`). Outputs are H.264/AAC MP4 using CRF 23; GPU acceleration comes later. HDR, rotation metadata and extra streams are explicitly skipped. Outputs are fully decoded for validation and only kept if smaller. Existing outputs get a numbered filename; originals are retained. Import reads file information without opening media contents or modifying originals.
+**Current status: CPU photo and video compression.** Add files or recursively scan folders, see original sizes, cancel import, clear the queue, and choose a separate output folder. CPU video compression is available through **Compress photos and videos**. Install FFmpeg (`sudo pacman -Syu --needed ffmpeg`). Default output is CPU H.264/AAC MP4 using Balanced quality; Optional NVIDIA H.264/HEVC encoding is available. HDR, rotation metadata and extra streams are explicitly skipped. Outputs are fully decoded for validation and only kept if smaller. Existing outputs get a numbered filename; originals are retained. Import reads file information without opening media contents or modifying originals.
 
 ## Prepare a batch
 
@@ -68,3 +68,11 @@ Install libvips and pyvips (included in the Arch command above); in an isolated 
 JPEG and supported HEIC inputs produce JPEG at quality 85. PNG and WebP produce lossless WebP with exact alpha pixels; dimensions are retained. EXIF orientation is applied to pixels and normalised. Supported EXIF/XMP/ICC metadata is retained by libvips, including location information when present; original modification time is retained. This is not a metadata scrubber. Validation checks full decoding, dimensions/channels, orientation, ICC/XMP and the original capture-date field when present; lossless WebP also gets a pixel comparison. It does not guarantee preservation of every vendor metadata tag.
 
 Animated/multi-image inputs, unsupported colour spaces, high-bit-depth/HDR images and photos over 100 megapixels are skipped. Larger results are discarded. Photos use stage progress (0%, validation, complete), with cancellation terminating the isolated worker. Existing output names receive numeric suffixes. As with video, publication currently requires a filesystem with hard-link support. Test representative phone photos before using a large batch.
+
+## Quality and NVIDIA encoding
+
+Select High Quality, Balanced (default), or Small Size before starting. CPU video CRF values are 18/23/28; NVIDIA CQ values are 19/23/28; JPEG qualities are 92/85/75. These are starting settings, not equivalent quality across encoders or guaranteed savings. PNG/WebP stays lossless in every preset. Resolution is unchanged.
+
+Video encoder choices: CPU H.264, NVIDIA H.264, NVIDIA HEVC. Photos always use CPU. NVIDIA selection performs a cancellable 15-second-limited real encode probe once per batch. If the probe fails, the visible encoder note explains the CPU H.264 fallback (including when HEVC was selected). A later per-file failure is reported without automatic retry. HEVC playback compatibility depends on your player. No AV1 option is offered.
+
+The probe and all processing run off the UI thread; controls are locked for the batch. GPU encoding still uses CPU decoding and validation. CI tests fallback with simulated failures and real CPU encoding; real NVENC, driver compatibility, quality and performance must be checked on the target laptop.
