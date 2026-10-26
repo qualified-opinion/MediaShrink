@@ -17,6 +17,12 @@ Second round of review fixes:
 - Missing FFmpeg gives an install instruction instead of a raw "No such file" error.
 - Re-runs skip originals that earlier results logs in the output folder record as done (same size, output present); a checkbox, on by default, turns this off.
 
-Still open from review: no minimum-saving threshold; one photo subprocess at a time; screen polish (status column width, remove from queue, drag-and-drop, open output folder); `.m4v`/`.heif`/`.avif` not accepted.
+Final round of review improvements:
+- Minimum saving setting (default 5%): outputs saving less are discarded and reported as "only X% smaller".
+- Photos run in parallel (about half the cores, max four) on worker threads, each with its own libvips subprocess; results are recorded on the batch thread. Videos follow one at a time. Overall progress never moves backwards.
+- File types: .m4v, .3gp, .avi (Motion JPEG 4:2:2 is accepted and output as 4:2:0) and .heif (output .heic).
+- Window: remove selected rows (button or Delete), drag-and-drop import, Open output folder, middle-elided paths, stretchable status column, two-row settings, scrolling content at small sizes, encoder note reset on Clear queue, progress bar accessible name per mode.
 
-See docs/RELEASE.md for the packaging assessment, license inventory decision, interruption behavior and explicit manual acceptance checklist. AppImage and public release are deferred until native acceptance and an actual packaged artifact test. Milestone 6 is implementation-complete but acceptance remains open. Next: the open limitations above, then target-machine acceptance. Do not merge or publish automatically.
+All review items are addressed. Remaining work is the target-machine acceptance checklist in docs/RELEASE.md, then packaging.
+
+See docs/RELEASE.md for the packaging assessment, license inventory decision, interruption behavior and explicit manual acceptance checklist. AppImage and public release are deferred until native acceptance and an actual packaged artifact test. Milestone 6 is implementation-complete but acceptance remains open. Next: target-machine acceptance. Do not merge or publish automatically.

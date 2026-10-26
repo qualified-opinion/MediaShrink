@@ -6,8 +6,8 @@ An offline Linux desktop app for batch photo and video compression, targeting Om
 
 ## Prepare a batch
 
-1. Choose **Add files** or **Add folder** (includes subfolders).
-2. Review the queue and total original size. Candidate extensions: MP4, MOV, MKV, JPEG/JPG, PNG, WebP and HEIC, regardless of letter case. The encoding engines validate actual formats and codec support.
+1. Choose **Add files** or **Add folder** (includes subfolders), or drag files and folders onto the window.
+2. Review the queue and total original size. Select rows and choose **Remove selected** (or press Delete) to take files out of the queue. Candidate extensions: MP4, M4V, MOV, MKV, 3GP, AVI, JPEG/JPG, PNG, WebP, HEIC and HEIF, regardless of letter case. AVI is accepted for older cameras that record Motion JPEG; their 4:2:2 colour is reduced to the standard 4:2:0 used by MP4 video. The encoding engines validate actual formats and codec support.
 3. Choose an existing output folder separate from imported folder trees. For individual files, their containing folder and its ancestors cannot be the output folder. Overlap is checked whether you select the destination before or after importing.
 
 Import skips symlink files/folders, unsupported extensions, and duplicate absolute paths. It reports inaccessible or missing paths and continues. This is path deduplication, not content duplicate detection. The queue exists only for the current session.
@@ -67,11 +67,11 @@ Install libvips and pyvips (included in the Arch command above); in an isolated 
 
 JPEG inputs produce JPEG at quality 85. HEIC inputs produce HEIC (HEVC) at libheif quality 50, because a JPEG copy of a HEIC photo is almost always larger; this needs libheif's x265 encoder plugin, and HEIC files are reported as skipped without it. PNG and lossless WebP produce lossless WebP with exact alpha pixels; lossy WebP stays lossy WebP at quality 80. Dimensions are retained. HEIC auxiliary images (depth maps, HDR gain maps) are not carried over. EXIF orientation is applied to pixels and normalised. Supported EXIF/XMP/ICC metadata is retained by libvips, including location information when present; original modification time is retained. This is not a metadata scrubber. Validation checks full decoding, dimensions/channels, orientation, ICC/XMP and the original capture-date field when present; lossless WebP also gets a pixel comparison. It does not guarantee preservation of every vendor metadata tag.
 
-Animated/multi-image inputs, unsupported colour spaces, high-bit-depth/HDR images and photos over 100 megapixels are skipped. Larger results are discarded. Photos use stage progress (0%, validation, complete), with cancellation terminating the isolated worker. Existing output names receive numeric suffixes. Test representative phone photos before using a large batch.
+Animated/multi-image inputs, unsupported colour spaces, high-bit-depth/HDR images and photos over 100 megapixels are skipped. Larger results are discarded. Several photos are processed at once (about half the CPU cores, at most four), each in its own worker process; videos then run one at a time because FFmpeg already uses every core. Photos use stage progress (0%, validation, complete), with cancellation terminating the isolated worker. Existing output names receive numeric suffixes. Test representative phone photos before using a large batch.
 
 ## Quality and NVIDIA encoding
 
-Select High Quality, Balanced (default), or Small Size before starting. CPU video CRF values are 18/23/28 (H.264) and 22/26/30 (HEVC for HDR); NVIDIA CQ values are 19/23/28; JPEG qualities are 92/85/75; HEIC qualities are 60/50/40; lossy WebP qualities are 90/80/70. These are starting settings, not equivalent quality across encoders or guaranteed savings. PNG and lossless WebP stay lossless in every preset. Resolution is unchanged.
+Select High Quality, Balanced (default), or Small Size before starting. CPU video CRF values are 18/23/28 (H.264) and 22/26/30 (HEVC for HDR); NVIDIA CQ values are 19/23/28; JPEG qualities are 92/85/75; HEIC qualities are 60/50/40; lossy WebP qualities are 90/80/70. These are starting settings, not equivalent quality across encoders or guaranteed savings. **Keep outputs at least N% smaller** (default 5%, range 0–50%) discards outputs that save less, because re-compressing for a tiny saving costs quality; such files are reported as "only X% smaller" and logged as No reduction. PNG and lossless WebP stay lossless in every preset. Resolution is unchanged.
 
 Video encoder choices: CPU H.264, NVIDIA H.264, NVIDIA HEVC. Photos always use CPU. NVIDIA selection performs a cancellable 15-second-limited real encode probe once per batch. If the probe fails, the visible encoder note explains the CPU H.264 fallback (including when HEVC was selected). A later per-file failure is reported without automatic retry. HEVC outputs use the `hvc1` tag that Apple players require; playback still depends on your player. HLG HDR videos always use HEVC Main10 (NVIDIA HEVC when selected, otherwise CPU x265, which is slower), because H.264 cannot keep 10-bit HDR. For iPhone Dolby Vision videos, the HLG base picture is kept and the Dolby Vision layer is dropped. No AV1 option is offered.
 
@@ -79,7 +79,7 @@ The probe and all processing run off the UI thread; controls are locked for the 
 
 ## Batch results and release status
 
-Overall progress weights each queued file equally, so it is not a time estimate. The final summary shows saved outputs, no-reduction results, files already done in an earlier batch, unsupported (skipped) files, real failures, cancellations and files not processed. Reduction percentages use only successfully saved files. Originals remain on disk, so these figures do not represent space already freed. Full error/output paths are available in table tooltips.
+Overall progress weights each queued file equally, so it is not a time estimate. The final summary shows saved outputs, no-reduction results, files already done in an earlier batch, unsupported (skipped) files, real failures, cancellations and files not processed. Reduction percentages use only successfully saved files. Originals remain on disk, so these figures do not represent space already freed. Long paths are shortened in the middle so file names stay visible; full error/output paths are available in table tooltips. **Open output folder** opens the destination in your file manager.
 
 Before each file, the destination needs twice the source size plus 64 MiB free and must be writable. Space can still run out during work. exFAT/FAT32 drives and other destinations without hard links are supported: the output name is claimed exclusively and the finished file is renamed onto it, so an existing file is never replaced.
 

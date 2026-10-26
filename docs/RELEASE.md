@@ -14,12 +14,12 @@ Before distributing a bundled build, choose a project license (none is currently
 
 Record the commit, Omarchy version, NVIDIA driver and FFmpeg/libvips versions with results:
 
-- [ ] Install and launch from a clean native environment; verify dialogs, resizing and Wayland scaling.
+- [ ] Install and launch from a clean native environment; verify dialogs, resizing, Wayland scaling, drag-and-drop from the file manager and **Open output folder**.
 - [ ] Compress representative phone JPEG/PNG/WebP/HEIC samples; check orientation, colours, alpha, dates and expected metadata. Confirm HEIC output works with the installed libheif (x265 encoder).
 - [ ] Compare CPU and NVIDIA H.264/HEVC outputs at all presets, including sound and full playback.
 - [ ] Compress real portrait and landscape phone videos, including iPhone HLG/Dolby Vision HDR clips; check orientation, HDR appearance and playback on the intended players (including Apple devices for HEVC).
 - [ ] Confirm HDR10/PQ, mirrored and extra-stream videos are reported clearly.
-- [ ] Process a large mixed batch; verify totals and errors. Savings measure output reduction, not disk space freed.
+- [ ] Process a large mixed batch; verify totals, errors, the minimum-saving setting and that parallel photo processing keeps the desktop responsive. Savings measure output reduction, not disk space freed.
 - [ ] Cancel during encoding and close during work; originals and previous successful outputs must remain.
 - [ ] Test insufficient space, unavailable destination and filename collisions on the intended storage device, including an exFAT USB drive.
 - [ ] Check that the output folder layout and the CSV results log match the originals for a nested folder import.

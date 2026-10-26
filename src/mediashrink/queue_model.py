@@ -54,6 +54,16 @@ class QueueModel(QAbstractTableModel):
         self.total_bytes += sum(item.size for item in files)
         self.endInsertRows()
 
+    def remove(self, rows) -> None:
+        """Remove rows from the queue, keeping any results of the remaining rows."""
+        rows = set(rows)
+        kept = [(row, item) for row, item in enumerate(self.files) if row not in rows]
+        self.beginResetModel()
+        self.results = {new: self.results[old] for new, (old, _) in enumerate(kept) if old in self.results}
+        self.files = [item for _, item in kept]
+        self.total_bytes = sum(item.size for item in self.files)
+        self.endResetModel()
+
     def clear(self) -> None:
         self.beginResetModel()
         self.files.clear()

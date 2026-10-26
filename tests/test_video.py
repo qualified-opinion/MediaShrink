@@ -118,9 +118,22 @@ class VideoTest(unittest.TestCase):
                 ffmpeg('-f', 'lavfi', '-i', 'testsrc2=size=128x96:rate=24', '-f', 'lavfi', '-i', 'sine', '-t', '2',
                        '-c:v', 'libx264', '-crf', '5', *audio, source)
                 target, _ = compress(source, output, (), Event(), lambda p: None)
-                (source_codec, source_rate), (out_codec, out_rate) = audio_info(source), audio_info(target)
+                (_, source_rate), (out_codec, out_rate) = audio_info(source), audio_info(target)
                 self.assertEqual(out_codec, codec)
                 self.assertLessEqual(out_rate, source_rate * 1.1, name)
+
+    def test_old_camera_motion_jpeg_avi(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'MVI_0001.AVI'
+            ffmpeg('-f', 'lavfi', '-i', 'testsrc2=size=128x96:rate=24', '-f', 'lavfi', '-i', 'sine', '-t', '1',
+                   '-c:v', 'mjpeg', '-pix_fmt', 'yuvj422p', '-q:v', '2', '-c:a', 'pcm_s16le', source)
+            output = root / 'output'
+            output.mkdir()
+            target, size = compress(source, output, (), Event(), lambda p: None)
+            self.assertEqual(target.name, 'MVI_0001-compressed.mp4')
+            self.assertLess(size, source.stat().st_size)
+            self.assertEqual(audio_info(target)[0], 'aac')
 
     def test_long_progress_stream_is_not_capped(self):
         # About five hours of ffmpeg -progress output; only the timestamps are needed.

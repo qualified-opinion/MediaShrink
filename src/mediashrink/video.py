@@ -116,7 +116,8 @@ def inspect(data):
     if hdr:
         if (v.get('pix_fmt'), v.get('color_primaries'), v.get('color_space')) != ('yuv420p10le', 'bt2020', 'bt2020nc'):
             raise ValueError('Skipped: unsupported HLG HDR format')
-    elif v.get('pix_fmt') not in ('yuv420p', 'yuvj420p') or v.get('color_transfer') == 'smpte2084' or v.get('color_primaries') == 'bt2020':
+    # 4:2:2 (Motion JPEG from older cameras) is reduced to the usual 4:2:0 delivery format.
+    elif v.get('pix_fmt') not in ('yuv420p', 'yuvj420p', 'yuv422p', 'yuvj422p') or v.get('color_transfer') == 'smpte2084' or v.get('color_primaries') == 'bt2020':
         raise ValueError('Skipped: HDR10/PQ, wide-gamut or unsupported pixel format')
     try:
         rotation = int(v.get('tags', {}).get('rotate', 0))
@@ -176,7 +177,8 @@ def choose_encoder(requested, preset, cancel, notify):
         return 'libx264'
 
 
-def compress(source, destination, roots, cancel, progress, preset='Balanced', encoder='libx264', folder=Path()):
+def compress(source, destination, roots, cancel, progress, preset='Balanced', encoder='libx264', folder=Path(),
+             min_saving=0.0):
     source = Path(source)
     if source.is_symlink():
         raise ValueError('Source changed to a symlink')
@@ -205,8 +207,8 @@ def compress(source, destination, roots, cancel, progress, preset='Balanced', en
         if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
             raise RuntimeError('Source changed during compression')
         size = output.stat().st_size
-        if size >= before.st_size:
-            return None, 0
+        if size >= before.st_size * (1 - min_saving):
+            return None, size  # Not kept: no reduction, or less than the minimum saving.
         os.utime(output, ns=(before.st_atime_ns, before.st_mtime_ns))
         target = publish(output, output_folder(destination, folder), source.stem, '.mp4', cancel)
         progress(100)

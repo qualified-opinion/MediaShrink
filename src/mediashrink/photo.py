@@ -9,10 +9,10 @@ from mediashrink.storage import Cancelled, check_destination, output_folder, pub
 from mediashrink.video import run
 
 # HEIC stays HEIC: it is already more compact than JPEG, so a JPEG copy is almost never smaller.
-OUTPUT_EXTENSIONS = {'.jpg': '.jpg', '.jpeg': '.jpg', '.heic': '.heic', '.png': '.webp', '.webp': '.webp'}
+OUTPUT_EXTENSIONS = {'.jpg': '.jpg', '.jpeg': '.jpg', '.heic': '.heic', '.heif': '.heic', '.png': '.webp', '.webp': '.webp'}
 
 
-def compress(source, destination, roots, cancel, progress, preset='Balanced', folder=Path()):
+def compress(source, destination, roots, cancel, progress, preset='Balanced', folder=Path(), min_saving=0.0):
     source = Path(source)
     if cancel.is_set():
         raise Cancelled('Cancelled')
@@ -38,8 +38,8 @@ def compress(source, destination, roots, cancel, progress, preset='Balanced', fo
         size = output.stat().st_size
         if size <= 0:
             raise RuntimeError('Empty photo output')
-        if size >= before.st_size:
-            return None, 0
+        if size >= before.st_size * (1 - min_saving):
+            return None, size  # Not kept: no reduction, or less than the minimum saving.
         os.utime(output, ns=(before.st_atime_ns, before.st_mtime_ns))
         target = publish(output, output_folder(destination, folder), source.stem, extension, cancel)
         progress(100)
