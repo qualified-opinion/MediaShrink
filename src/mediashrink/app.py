@@ -44,6 +44,8 @@ class ImportThread(QThread):
 class MediaThread(QThread):
     update = Signal(int, str, str)
     encoder_status = Signal(str)
+    batch_status = Signal(object)
+    overall_progress = Signal(int)
 
     def __init__(self, files, destination, roots, parent=None, preset="Balanced", encoder="libx264"):
         self.preset, self.encoder = preset, encoder
@@ -52,11 +54,15 @@ class MediaThread(QThread):
         self.cancel = Event()
 
     def run(self):
+        totals = dict(total=len(self.files), completed=0, saved=0, skipped=0, failed=0,
+                      cancelled=0, original_bytes=0, output_bytes=0)
+        self.batch_status.emit(totals.copy())
         selected = self.encoder
         if any(item.path.suffix.lower() in VIDEO_EXTENSIONS for item in self.files):
             try:
                 selected = choose_encoder(selected, self.preset, self.cancel, self.encoder_status.emit)
             except Cancelled:
+                self.batch_status.emit(totals.copy())
                 return
         for row, item in enumerate(self.files):
             if self.cancel.is_set():
@@ -67,14 +73,30 @@ class MediaThread(QThread):
                 options["encoder"] = selected
             try:
                 self.update.emit(row, "Checking media", "—")
+                source_size = item.path.stat().st_size
                 target, size = engine(item.path, self.destination, self.roots, self.cancel,
-                    lambda percent, row=row: self.update.emit(row, f"Compressing {percent}%", "—"), **options)
+                    lambda percent, row=row: self.report_progress(row, percent), **options)
+                totals['completed'] += 1
+                totals['saved' if target else 'skipped'] += 1
+                if target:
+                    totals['original_bytes'] += source_size
+                    totals['output_bytes'] += size
                 self.update.emit(row, f"Saved: {target}" if target else "Skipped: no size reduction", format_size(size) if target else "—")
             except Cancelled:
+                totals["cancelled"] += 1
                 self.update.emit(row, "Cancelled", "—")
+                self.batch_status.emit(totals.copy())
                 break
             except Exception as exc:
+                totals['completed'] += 1
+                totals['failed'] += 1
                 self.update.emit(row, str(exc), "—")
+            self.overall_progress.emit(int(totals['completed'] / max(1, totals['total']) * 100))
+            self.batch_status.emit(totals.copy())
+
+    def report_progress(self, row, percent):
+        self.update.emit(row, f"Compressing {percent}%", "—")
+        self.overall_progress.emit(int((row + min(percent, 99) / 100) / max(1, len(self.files)) * 100))
 
 
 class MainWindow(QMainWindow):
@@ -159,6 +181,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.table, 1)
         self.summary = QLabel("No files added yet")
         layout.addWidget(self.summary)
+        self.batch_summary = QLabel("")
+        self.batch_summary.setWordWrap(True)
+        layout.addWidget(self.batch_summary)
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
         self.progress.setAccessibleName("Import in progress")
@@ -216,6 +241,8 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(busy)
         if not busy:
             self.cancel_button.setText("Cancel import")
+        if busy:
+            self.progress.setRange(0, 0)
         self.progress.setVisible(busy)
 
     @Slot(object)
@@ -262,6 +289,7 @@ class MainWindow(QMainWindow):
     def clear_queue(self):
         if self.worker is not None:
             return
+        self.batch_summary.clear()
         self.queue.clear()
         self.refresh_start()
         self.source_folders.clear()
@@ -305,12 +333,31 @@ class MainWindow(QMainWindow):
         self.worker = MediaThread(list(self.queue.files), self.destination, set(self.source_folders), self, self.quality.currentText(), ENCODERS[self.encoder.currentText()])
         self.encoder_note.setText("Photos use CPU; video encoder: " + self.encoder.currentText())
         self.worker.encoder_status.connect(self.encoder_note.setText)
+        self.queue.results.clear()
+        if self.queue.rowCount():
+            self.queue.dataChanged.emit(self.queue.index(0, 0), self.queue.index(self.queue.rowCount()-1, 3))
+        self.worker.batch_status.connect(self.show_batch)
+        self.worker.overall_progress.connect(self.progress.setValue)
         self.worker.update.connect(self.video_update)
         self.worker.finished.connect(self.import_finished)
         self.set_importing(True)
         self.start_button.setEnabled(False)
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
         self.cancel_button.setText("Cancel processing")
         self.worker.start()
+
+    @Slot(object)
+    def show_batch(self, totals):
+        reduction = totals['original_bytes'] - totals['output_bytes']
+        percent = 100 * reduction / totals['original_bytes'] if totals['original_bytes'] else 0
+        pending = totals['total'] - totals['completed'] - totals['cancelled']
+        self.batch_summary.setText(
+            f"{totals['completed']}/{totals['total']} processed · {totals['saved']} saved · "
+            f"{totals['skipped']} no reduction · {totals['failed']} failed/unsupported · "
+            f"{totals['cancelled']} cancelled · {pending} not processed\n"
+            f"Saved outputs are {format_size(reduction)} smaller ({percent:.1f}%). Originals remain on disk."
+        )
 
     @Slot(int, str, str)
     def video_update(self, row, status, size):
